@@ -1,0 +1,40 @@
+server:
+  port: ${SERVER_PORT:8090}
+
+external-provider:
+  mode: ${EXTERNAL_PROVIDER_MODE:LIVE}
+
+fixture:
+  system-data-service-url: ${SYSTEM_DATA_SERVICE_URL:http://localhost:8103}
+  dataset-id: ${FIXTURE_DATASET_ID:uk-software-developer-demo}
+  dataset-version: ${FIXTURE_DATASET_VERSION:1.0.0}
+  scenario: ${FIXTURE_SCENARIO:happy-path}
+
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  model: gpt-4.1-mini
+  endpoint: https://api.openai.com/v1/chat/completions
+  connect-timeout: 10000
+  read-timeout: 60000
+
+llm:
+  mock-mode: ${LLM_MOCK_MODE:false}
+
+spring:
+  application:
+    name: llm-gateway
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] [%X{serviceName}] [%thread] %logger{36} - %msg%n"
+  level:
+    com.jobseekercopilot: ${APP_LOG_LEVEL:INFO}
