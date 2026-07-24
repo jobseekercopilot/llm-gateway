@@ -1,0 +1,679 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Job Seeker Copilot System Data Fixture API",
+    "version": "1.0.0",
+    "description": "Producer-owned contract for deterministic, explicitly enabled non-production fixture responses."
+  },
+  "tags": [
+    {
+      "name": "Fixture Controller",
+      "description": "Guarded deterministic fixture operations"
+    }
+  ],
+  "paths": {
+    "/internal/fixtures/status": {
+      "get": {
+        "tags": [
+          "Fixture Controller"
+        ],
+        "operationId": "status",
+        "summary": "Report the active fixture configuration",
+        "responses": {
+          "200": {
+            "description": "Fixture status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixtureStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/fixtures/jobs/search": {
+      "get": {
+        "tags": [
+          "Fixture Controller"
+        ],
+        "operationId": "searchJobs",
+        "summary": "Search deterministic fixture jobs",
+        "parameters": [
+          {
+            "name": "datasetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "datasetVersion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scenario",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "salaryMin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "salaryMax",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "remoteType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deterministic fixture search result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixtureJobSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/fixtures/jobs/{jobId}": {
+      "get": {
+        "tags": [
+          "Fixture Controller"
+        ],
+        "operationId": "job",
+        "summary": "Get one deterministic fixture job",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "datasetId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "datasetVersion",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fixture job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoJob"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/fixtures/postcodes/{postcode}": {
+      "get": {
+        "tags": [
+          "Fixture Controller"
+        ],
+        "operationId": "postcode",
+        "summary": "Resolve a deterministic fixture postcode",
+        "parameters": [
+          {
+            "name": "postcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fixture postcode response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixturePostcodeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/fixtures/llm/respond": {
+      "post": {
+        "tags": [
+          "Fixture Controller"
+        ],
+        "operationId": "llm",
+        "summary": "Return a deterministic fixture LLM response",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FixtureLlmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fixture LLM response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixtureLlmResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/fixtures/stripe/respond": {
+      "post": {
+        "tags": [
+          "Fixture Controller"
+        ],
+        "operationId": "stripe",
+        "summary": "Return a deterministic fixture Stripe response",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FixtureStripeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fixture Stripe response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixtureStripeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FixtureStatusResponse": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "externalCallsEnabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "environment": {
+            "type": "string"
+          },
+          "defaultDatasetId": {
+            "type": "string"
+          },
+          "defaultDatasetVersion": {
+            "type": "string"
+          },
+          "defaultScenario": {
+            "type": "string"
+          },
+          "externalCallsEnabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FixtureJobSearchResponse": {
+        "type": "object",
+        "required": [
+          "page",
+          "pageSize",
+          "totalResults",
+          "jobs"
+        ],
+        "properties": {
+          "datasetId": {
+            "type": "string"
+          },
+          "datasetVersion": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalResults": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DemoJob"
+            }
+          }
+        }
+      },
+      "DemoJob": {
+        "type": "object",
+        "required": [
+          "suitableForDemo",
+          "qualityScore"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "externalReference": {
+            "type": "string"
+          },
+          "sourceProvider": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "companyDisplayName": {
+            "type": "string"
+          },
+          "locationName": {
+            "type": "string"
+          },
+          "postcode": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "salaryMinimum": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "salaryMaximum": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "salaryCurrency": {
+            "type": "string"
+          },
+          "salaryPeriod": {
+            "type": "string"
+          },
+          "employmentType": {
+            "type": "string"
+          },
+          "workingPattern": {
+            "type": "string"
+          },
+          "remoteType": {
+            "type": "string"
+          },
+          "contractType": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "seniority": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "shortDescription": {
+            "type": "string"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "qualifications": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "benefits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "datePosted": {
+            "type": "string"
+          },
+          "closingDate": {
+            "type": "string"
+          },
+          "sourceUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "sourceRetrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sourceQuery": {
+            "type": "string"
+          },
+          "sourceLocation": {
+            "type": "string"
+          },
+          "sourceMetadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "generatedMetadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "suitableForDemo": {
+            "type": "boolean"
+          },
+          "qualityScore": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "FixturePostcodeResponse": {
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "found"
+        ],
+        "properties": {
+          "postcode": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "adminDistrict": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "fixtureSource": {
+            "type": "string"
+          }
+        }
+      },
+      "FixtureLlmRequest": {
+        "type": "object",
+        "properties": {
+          "datasetId": {
+            "type": "string"
+          },
+          "datasetVersion": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "fixtureKey": {
+            "type": "string"
+          },
+          "promptHash": {
+            "type": "string"
+          }
+        }
+      },
+      "FixtureLlmResponse": {
+        "type": "object",
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "totalTokens",
+          "fixtureMode"
+        ],
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "response": {
+            "type": "string"
+          },
+          "inputTokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outputTokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalTokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "finishReason": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "fixtureKey": {
+            "type": "string"
+          },
+          "fixtureMode": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FixtureStripeRequest": {
+        "type": "object",
+        "properties": {
+          "datasetId": {
+            "type": "string"
+          },
+          "datasetVersion": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "pricingPlanId": {
+            "type": "string"
+          },
+          "tokenAmount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "priceGbpPence": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "FixtureStripeResponse": {
+        "type": "object",
+        "required": [
+          "fixtureMode"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "paymentIntentId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "status": {
+            "type": "string"
+          },
+          "fixtureMode": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

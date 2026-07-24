@@ -4,7 +4,8 @@ The single current external-model boundary for Job Seeker Copilot. It exposes
 an internal generation endpoint and supports an OpenAI live adapter plus
 deterministic fixture behaviour for safe testing.
 
-This migration baseline is **not beta-ready**. Its internal contract leaks
+This service is **not beta-ready**. Its build is reproducible from committed
+source, but its internal contract leaks
 provider naming, forwards one unrestricted user prompt, has no structured
 output enforcement, bounded retry/backoff/rate-limit/circuit-breaker policy,
 maximum prompt/response size, cost controls, or complete provider privacy
@@ -21,6 +22,12 @@ decision. See [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
 [`contracts/openapi.json`](contracts/openapi.json) is the migration-time
 OpenAPI snapshot.
 
+The System Data fixture client is generated during Maven `generate-sources`
+from the reviewed, checksum-protected producer contract under
+`src/main/openapi`. Generated sources and binaries are build outputs and are
+not committed. See
+[`docs/CONTRACT_GOVERNANCE.md`](docs/CONTRACT_GOVERNANCE.md).
+
 ## Configuration
 
 Live mode reads the provider credential from `OPENAI_API_KEY`. Never commit a
@@ -30,12 +37,16 @@ must not make paid provider requests.
 ## Build
 
 ```bash
-mvn -B clean verify
+./scripts/test-contract-policy.sh
+./scripts/verify-contracts.sh
+mvn -B --no-transfer-progress clean verify
+docker build --tag local/llm-gateway .
 ```
 
-The command currently fails in a clean clone because the System Data client is
-referenced from an untracked local `libs/` directory. Compiled clients must not
-be committed as the fix.
+These commands are the clean-clone verification contract. They require no
+sibling repository, local `libs/` directory, generated JAR or preinstalled
+Job Seeker Copilot artifact. The tests use mocks or local application
+endpoints and do not make a live or paid provider request.
 
 ## Licence
 
