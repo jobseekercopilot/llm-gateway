@@ -24,11 +24,11 @@ Cover Letter Service owns domain prompts and response interpretation.
 - The migration-time contract is `contracts/openapi.json`.
 - Gitleaks and targeted personal-data checks passed on the source snapshot.
 - No live provider request was made.
-- A clean `mvn -B clean verify` fails before compilation because the
-  `systemPath` System Data client JAR is absent. Ten test methods exist in
-  source, but they were not executed in the clean candidate.
-- The candidate container build fails at `COPY libs ./libs`; no image was
-  produced.
+- The DOCGEN-02 LLM slice replaces the `systemPath` System Data client JAR with
+  deterministic source generation from an exact revision/checksum-pinned
+  producer contract. Contract policy tests, Maven verification and the
+  source-only container build run in CI without a sibling repository, local
+  `libs/` directory or preinstalled Job Seeker Copilot artifact.
 - OWASP Dependency-Check 12.1.8 completed against the cached 2026-07-18
   advisory database: 42 dependencies, 9 vulnerable dependencies, 137
   vulnerability matches, including 17 Critical and 37 High matches. Results
@@ -58,7 +58,8 @@ Cover Letter Service owns domain prompts and response interpretation.
     region, contractual terms, and deletion is not documented.
 11. The Dockerfile lacks a non-root runtime, digest-pinned bases, explicit
     resource constraints, and supply-chain scan evidence.
-12. The build depends on an untracked generated System Data client JAR.
+12. Wider document-generation consumers still need the same reproducible
+    contract approach under DOCGEN-02/DOCGEN-03.
 13. Current Spring, Tomcat, Jackson, logging, and Swagger UI dependency
     findings include untriaged Critical/High advisories.
 
