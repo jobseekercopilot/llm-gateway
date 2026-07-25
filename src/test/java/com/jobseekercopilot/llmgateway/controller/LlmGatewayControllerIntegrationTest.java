@@ -62,6 +62,10 @@ class LlmGatewayControllerIntegrationTest {
                 .andExpect(jsonPath("$.output", containsString("deterministic")))
                 .andExpect(jsonPath("$.finishReason", is("COMPLETED")))
                 .andExpect(jsonPath("$.usage.totalTokens", is(20)))
+                .andExpect(jsonPath("$.audit.modelId", is("fixture-model")))
+                .andExpect(jsonPath("$.audit.modelDeploymentVersion", is("fixture-model-deployment-1")))
+                .andExpect(jsonPath("$.audit.pricingVersion", is("non-billable-fixture-1")))
+                .andExpect(jsonPath("$.audit.estimatedCostMicroUsd", is(0)))
                 .andExpect(jsonPath("$.provider").doesNotExist())
                 .andExpect(jsonPath("$.model").doesNotExist());
 
@@ -112,6 +116,18 @@ class LlmGatewayControllerIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.details").isArray());
+    }
+
+    @Test
+    void rejectsUnsupportedTaskAgainstServerPolicyBeforeFixtureUse() throws Exception {
+        GenerationRequest request = textRequest();
+        request.setTask("UNSUPPORTED_TASK");
+
+        mockMvc.perform(post("/api/v2/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("GENERATION_LIMIT_EXCEEDED")));
     }
 
     @Test

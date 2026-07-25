@@ -124,6 +124,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
     }
 
+    @ExceptionHandler(GenerationLimitException.class)
+    public ResponseEntity<ErrorResponse> handleGenerationLimit(GenerationLimitException ex) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "GENERATION_LIMIT_EXCEEDED",
+                "The request exceeds the configured generation policy."
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
     @ExceptionHandler(GenerationBoundaryException.class)
     public ResponseEntity<ErrorResponse> handleGenerationBoundary(GenerationBoundaryException ex) {
         log.error("Provider response violated the generation boundary: {}", ex.getMessage());

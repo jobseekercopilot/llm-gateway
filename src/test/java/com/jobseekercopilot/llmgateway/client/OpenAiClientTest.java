@@ -9,6 +9,7 @@ import com.jobseekercopilot.llmgateway.dto.GenerationOutputFormat;
 import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
 import com.jobseekercopilot.llmgateway.exception.GenerationRefusedException;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -27,6 +28,15 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class OpenAiClientTest {
 
     @Test
+    void springCanConstructTheLiveModeAdapter() {
+        new ApplicationContextRunner()
+                .withPropertyValues("external-provider.mode=LIVE")
+                .withUserConfiguration(OpenAiConfiguration.class, OpenAiClient.class)
+                .run(context ->
+                        assertEquals(1, context.getBeansOfType(OpenAiClient.class).size()));
+    }
+
+    @Test
     void adapterKeepsTrustedAndUntrustedMessagesSeparateAndMapsStrictSchema() throws Exception {
         OpenAiConfiguration configuration = configuration();
         RestTemplate restTemplate = new RestTemplate();
@@ -36,7 +46,7 @@ class OpenAiClientTest {
                 .andExpect(header("Authorization", "Bearer runtime-secret"))
                 .andExpect(header("OpenAI-Organization", "org-jobseeker-copilot"))
                 .andExpect(header("OpenAI-Project", "proj_jobseeker_copilot_beta"))
-                .andExpect(jsonPath("$.*", hasSize(6)))
+                .andExpect(jsonPath("$.*", hasSize(7)))
                 .andExpect(jsonPath("$.messages[0].role").value("developer"))
                 .andExpect(jsonPath("$.messages[0].content").value("Trusted instructions"))
                 .andExpect(jsonPath("$.messages[1].role").value("user"))
@@ -44,11 +54,14 @@ class OpenAiClientTest {
                 .andExpect(jsonPath("$.max_completion_tokens").value(1000))
                 .andExpect(jsonPath("$.temperature").value(0.2))
                 .andExpect(jsonPath("$.store").value(false))
+                .andExpect(jsonPath("$.service_tier").value("default"))
                 .andExpect(jsonPath("$.response_format.type").value("json_schema"))
                 .andExpect(jsonPath("$.response_format.json_schema.name").value("document-output"))
                 .andExpect(jsonPath("$.response_format.json_schema.strict").value(true))
                 .andRespond(withSuccess("""
                         {
+                          "model": "configured-model",
+                          "service_tier": "default",
                           "choices": [{
                             "finish_reason": "stop",
                             "message": {"content": "{\\"document\\":\\"ok\\"}"}
@@ -80,6 +93,7 @@ class OpenAiClientTest {
         assertEquals("{\"document\":\"ok\"}", result.output());
         assertEquals(GenerationFinishReason.COMPLETED, result.finishReason());
         assertEquals("openai", result.adapterId());
+        assertEquals("configured-model", result.modelId());
         assertEquals(20L, result.usage().totalTokens());
     }
 
@@ -91,6 +105,8 @@ class OpenAiClientTest {
         server.expect(once(), requestTo(configuration.getEndpoint()))
                 .andRespond(withSuccess("""
                         {
+                          "model": "configured-model",
+                          "service_tier": "default",
                           "choices": [{
                             "finish_reason": "stop",
                             "message": {"content": null, "refusal": "provider detail"}
@@ -128,11 +144,41 @@ class OpenAiClientTest {
         server.expect(once(), requestTo(configuration.getEndpoint()))
                 .andRespond(withSuccess("""
                         {
+                          "model": "configured-model",
+                          "service_tier": "default",
                           "choices": [{
                             "finish_reason": "stop",
                             "message": {"content": "generated output"}
                           }],
                           "usage": {
+                            "completion_tokens": 8,
+                            "total_tokens": 20
+                          }
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        OpenAiClient client = new OpenAiClient(configuration, restTemplate);
+
+        assertThrows(GenerationBoundaryException.class, () -> client.generate(textCommand()));
+        server.verify();
+    }
+
+    @Test
+    void adapterRejectsUnexpectedServiceTierBeforeCostAccounting() {
+        OpenAiConfiguration configuration = configuration();
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andRespond(withSuccess("""
+                        {
+                          "model": "configured-model",
+                          "service_tier": "priority",
+                          "choices": [{
+                            "finish_reason": "stop",
+                            "message": {"content": "generated output"}
+                          }],
+                          "usage": {
+                            "prompt_tokens": 12,
                             "completion_tokens": 8,
                             "total_tokens": 20
                           }

@@ -40,6 +40,15 @@ if "$repository_root/scripts/verify-api-contract.sh" "$temporary_dir/provider-le
     exit 1
 fi
 
+copy_contract "$temporary_dir/audit-removal"
+jq 'del(.components.schemas.GenerationResponse.properties.audit)' \
+    "$temporary_dir/audit-removal/openapi.json" > "$temporary_dir/audit-removal/changed.json"
+mv "$temporary_dir/audit-removal/changed.json" "$temporary_dir/audit-removal/openapi.json"
+if "$repository_root/scripts/verify-api-contract.sh" "$temporary_dir/audit-removal/openapi.json" >/dev/null 2>&1; then
+    echo "API contract negative test accepted removal of model/cost audit metadata" >&2
+    exit 1
+fi
+
 copy_contract "$temporary_dir/unknown-fields"
 jq '.components.schemas.GenerationRequest.additionalProperties = true' \
     "$temporary_dir/unknown-fields/openapi.json" > "$temporary_dir/unknown-fields/changed.json"

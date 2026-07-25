@@ -43,6 +43,7 @@ public class OpenApiConfig {
                         "GenerationLimits",
                         "GenerationResponse",
                         "GenerationUsage",
+                        "GenerationAudit",
                         "ErrorResponse"
                 ).forEach(name -> {
                     var schema = openApi.getComponents().getSchemas().get(name);

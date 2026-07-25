@@ -5,12 +5,15 @@ The provider-neutral external-model boundary for Job Seeker Copilot. API
 text or strict JSON Schema output contracts, enforces request/response bounds
 and supports fail-closed disabled, live and deterministic fixture modes.
 
-The service is still **not beta-ready** until retry/quota/cost controls,
-provider account/privacy approval and all approved consumers are completed. See
+The service is still **not beta-ready** until retry and trusted per-user
+quota/credit controls, provider account/privacy approval and all approved
+consumers are completed. See
 [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md) and
 [`docs/PROVIDER_NEUTRAL_CONTRACT.md`](docs/PROVIDER_NEUTRAL_CONTRACT.md).
 The dated provider evidence and operator checklist are in
 [`docs/OPENAI_PROVIDER_DATA_DECISION.md`](docs/OPENAI_PROVIDER_DATA_DECISION.md).
+Admission and provider-cost controls are documented in
+[`docs/GENERATION_COST_CONTROLS.md`](docs/GENERATION_COST_CONTROLS.md).
 
 ## Technology
 
@@ -39,7 +42,12 @@ The safe default is `EXTERNAL_PROVIDER_MODE=DISABLED`.
 - `LIVE` requires runtime-only credentials, explicit model, exact
   organisation/project, region-matched Chat Completions endpoint, declared
   retention/data-sharing controls, a named owner, a current decision reference
-  and positive timeouts. It cannot start in test/E2E profiles.
+  and positive timeouts. It also requires the exact reviewed model, deployment
+  and pricing versions plus non-zero input/output token rates. It cannot start
+  in test/E2E profiles.
+- Every mode requires valid server-owned task ceilings. Unknown or oversized
+  tasks fail before provider activity. FIXTURE uses explicit zero-cost,
+  non-billable audit metadata.
 - The removed `LLM_MOCK_MODE` setting is rejected rather than silently ignored.
 
 Never commit a credential. CI and automated tests use fixture or mocked
