@@ -1,8 +1,10 @@
 package com.jobseekercopilot.llmgateway.client;
 
 import com.jobseekercopilot.llmgateway.config.FixtureProperties;
-import com.jobseekercopilot.llmgateway.dto.GenerateRequest;
-import com.jobseekercopilot.llmgateway.dto.LlmUsage;
+import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
+import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
+import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
+import com.jobseekercopilot.llmgateway.dto.GenerationUsage;
 import com.jobseekercopilot.generated.systemdataservice.api.FixtureControllerApi;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmResponse;
@@ -24,21 +26,25 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
     }
 
     @Override
-    public OpenAiGenerationResult generate(GenerateRequest request) {
+    public ProviderGenerationResult generate(GenerationCommand command) {
         FixtureLlmRequest payload = new FixtureLlmRequest()
                 .datasetId(fixtureProperties.getDatasetId())
                 .datasetVersion(fixtureProperties.getDatasetVersion())
                 .scenario(fixtureProperties.getScenario())
-                .operation(request.getTaskType() == null ? "GENERAL" : request.getTaskType());
+                .operation(command.task());
         FixtureLlmResponse body = fixtureControllerApi.llm(payload);
         log.info("LLM fixture response returned datasetId={} scenario={}", fixtureProperties.getDatasetId(), fixtureProperties.getScenario());
-        return new OpenAiGenerationResult(text(body == null ? null : body.getResponse(), "{}"), LlmUsage.builder()
-                .provider(text(body == null ? null : body.getProvider(), "FIXTURE"))
-                .model(text(body == null ? null : body.getModel(), "fixture-llm"))
-                .inputTokens(number(body == null ? null : body.getInputTokens()))
-                .outputTokens(number(body == null ? null : body.getOutputTokens()))
-                .totalTokens(number(body == null ? null : body.getTotalTokens()))
-                .build());
+        return new ProviderGenerationResult(
+                text(body == null ? null : body.getResponse(), "{}"),
+                new GenerationUsage(
+                        number(body == null ? null : body.getInputTokens()),
+                        number(body == null ? null : body.getOutputTokens()),
+                        number(body == null ? null : body.getTotalTokens())
+                ),
+                GenerationFinishReason.COMPLETED,
+                text(body == null ? null : body.getProvider(), "fixture"),
+                text(body == null ? null : body.getModel(), "fixture-llm")
+        );
     }
 
     private String text(String value, String fallback) {

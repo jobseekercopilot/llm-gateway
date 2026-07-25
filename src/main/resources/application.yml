@@ -2,7 +2,7 @@ server:
   port: ${SERVER_PORT:8090}
 
 external-provider:
-  mode: ${EXTERNAL_PROVIDER_MODE:LIVE}
+  mode: ${EXTERNAL_PROVIDER_MODE:DISABLED}
 
 fixture:
   system-data-service-url: ${SYSTEM_DATA_SERVICE_URL:http://localhost:8103}
@@ -12,18 +12,17 @@ fixture:
 
 openai:
   api-key: ${OPENAI_API_KEY:}
-  model: gpt-4.1-mini
-  endpoint: https://api.openai.com/v1/chat/completions
-  connect-timeout: 10000
-  read-timeout: 60000
-
-llm:
-  mock-mode: ${LLM_MOCK_MODE:false}
+  model: ${OPENAI_MODEL:}
+  endpoint: ${OPENAI_ENDPOINT:https://api.openai.com/v1/chat/completions}
+  connect-timeout: ${OPENAI_CONNECT_TIMEOUT_MS:10000}
+  read-timeout: ${OPENAI_READ_TIMEOUT_MS:60000}
 
 spring:
   application:
     name: llm-gateway
   jackson:
+    deserialization:
+      fail-on-unknown-properties: true
     serialization:
       write-dates-as-timestamps: false
 

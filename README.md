@@ -1,15 +1,14 @@
 # LLM Gateway
 
-The single current external-model boundary for Job Seeker Copilot. It exposes
-an internal generation endpoint and supports an OpenAI live adapter plus
-deterministic fixture behaviour for safe testing.
+The provider-neutral external-model boundary for Job Seeker Copilot. API
+`2.0.0` separates trusted instructions from untrusted input, accepts explicit
+text or strict JSON Schema output contracts, enforces request/response bounds
+and supports fail-closed disabled, live and deterministic fixture modes.
 
-This service is **not beta-ready**. Its build is reproducible from committed
-source, but its internal contract leaks
-provider naming, forwards one unrestricted user prompt, has no structured
-output enforcement, bounded retry/backoff/rate-limit/circuit-breaker policy,
-maximum prompt/response size, cost controls, or complete provider privacy
-decision. See [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
+The service is still **not beta-ready** until retry/quota/cost controls,
+provider privacy decisions and all approved consumers are completed. See
+[`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md) and
+[`docs/PROVIDER_NEUTRAL_CONTRACT.md`](docs/PROVIDER_NEUTRAL_CONTRACT.md).
 
 ## Technology
 
@@ -19,8 +18,9 @@ decision. See [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
 
 ## API contract
 
-[`contracts/openapi.json`](contracts/openapi.json) is the migration-time
-OpenAPI snapshot.
+[`contracts/openapi.json`](contracts/openapi.json) is the reviewed API `2.0.0`
+snapshot. New consumers use `POST /api/v2/generations`. The deprecated v1
+endpoint remains only for a bounded CV consumer migration.
 
 The System Data fixture client is generated during Maven `generate-sources`
 from the reviewed, checksum-protected producer contract under
@@ -30,16 +30,25 @@ not committed. See
 
 ## Configuration
 
-Live mode reads the provider credential from `OPENAI_API_KEY`. Never commit a
-credential. CI and automated tests must use deterministic fixture behaviour and
-must not make paid provider requests.
+The safe default is `EXTERNAL_PROVIDER_MODE=DISABLED`.
+
+- `FIXTURE` requires the System Data URL, dataset ID/version and scenario, and
+  cannot start in a production profile.
+- `LIVE` requires runtime-only `OPENAI_API_KEY`, explicit `OPENAI_MODEL`, an
+  HTTPS endpoint and positive timeouts, and cannot start in test/E2E profiles.
+- The removed `LLM_MOCK_MODE` setting is rejected rather than silently ignored.
+
+Never commit a credential. CI and automated tests use fixture or mocked
+behaviour and must not make live or paid provider requests.
 
 ## Build
 
 ```bash
 ./scripts/test-contract-policy.sh
 ./scripts/verify-contracts.sh
+./scripts/test-api-contract-policy.sh
 mvn -B --no-transfer-progress clean verify
+./scripts/verify-api-contract.sh contracts/openapi.json target/openapi.json
 docker build --tag local/llm-gateway .
 ```
 
