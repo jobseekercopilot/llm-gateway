@@ -16,6 +16,7 @@ import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
@@ -33,12 +34,16 @@ class OpenAiClientTest {
         server.expect(once(), requestTo(configuration.getEndpoint()))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("Authorization", "Bearer runtime-secret"))
+                .andExpect(header("OpenAI-Organization", "org-jobseeker-copilot"))
+                .andExpect(header("OpenAI-Project", "proj_jobseeker_copilot_beta"))
+                .andExpect(jsonPath("$.*", hasSize(6)))
                 .andExpect(jsonPath("$.messages[0].role").value("developer"))
                 .andExpect(jsonPath("$.messages[0].content").value("Trusted instructions"))
                 .andExpect(jsonPath("$.messages[1].role").value("user"))
                 .andExpect(jsonPath("$.messages[1].content").value("Untrusted input"))
                 .andExpect(jsonPath("$.max_completion_tokens").value(1000))
                 .andExpect(jsonPath("$.temperature").value(0.2))
+                .andExpect(jsonPath("$.store").value(false))
                 .andExpect(jsonPath("$.response_format.type").value("json_schema"))
                 .andExpect(jsonPath("$.response_format.json_schema.name").value("document-output"))
                 .andExpect(jsonPath("$.response_format.json_schema.strict").value(true))
@@ -158,7 +163,9 @@ class OpenAiClientTest {
         OpenAiConfiguration configuration = new OpenAiConfiguration();
         configuration.setApiKey("runtime-secret");
         configuration.setModel("configured-model");
-        configuration.setEndpoint("https://provider.example/v1/generate");
+        configuration.setEndpoint("https://api.openai.com/v1/chat/completions");
+        configuration.setOrganizationId("org-jobseeker-copilot");
+        configuration.setProjectId("proj_jobseeker_copilot_beta");
         return configuration;
     }
 }

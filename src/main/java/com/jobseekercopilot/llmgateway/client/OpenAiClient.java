@@ -30,6 +30,9 @@ import java.util.Map;
 @Component
 @ConditionalOnProperty(prefix = "external-provider", name = "mode", havingValue = "LIVE")
 public class OpenAiClient implements LlmProviderClient {
+    static final String OPENAI_ORGANIZATION_HEADER = "OpenAI-Organization";
+    static final String OPENAI_PROJECT_HEADER = "OpenAI-Project";
+    static final String OPENAI_REQUEST_ID_HEADER = "x-request-id";
 
     private final OpenAiConfiguration openAiConfiguration;
     private final RestTemplate restTemplate;
@@ -52,6 +55,8 @@ public class OpenAiClient implements LlmProviderClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(openAiConfiguration.getApiKey());
+        headers.set(OPENAI_ORGANIZATION_HEADER, openAiConfiguration.getOrganizationId());
+        headers.set(OPENAI_PROJECT_HEADER, openAiConfiguration.getProjectId());
         String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
         if (StringUtils.hasText(correlationId)) {
             headers.set(CorrelationIdFilter.HEADER_NAME, correlationId);
@@ -65,6 +70,7 @@ public class OpenAiClient implements LlmProviderClient {
         ));
         requestBody.put("temperature", command.temperature());
         requestBody.put("max_completion_tokens", command.maxOutputTokens());
+        requestBody.put("store", false);
         if (command.outputFormat() == GenerationOutputFormat.JSON_SCHEMA) {
             requestBody.put("response_format", Map.of(
                     "type", "json_schema",
@@ -83,9 +89,10 @@ public class OpenAiClient implements LlmProviderClient {
 
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 openAiConfiguration.getEndpoint(), entity, Map.class);
-        log.info("OpenAI provider returned status={} durationMs={}",
+        log.info("OpenAI provider returned status={} durationMs={} providerRequestId={}",
                 response.getStatusCode().value(),
-                (System.nanoTime() - startedAt) / 1_000_000);
+                (System.nanoTime() - startedAt) / 1_000_000,
+                safeRequestId(response));
 
         Map<?, ?> responseBody = response.getBody();
         if (responseBody == null) {
@@ -161,5 +168,13 @@ public class OpenAiClient implements LlmProviderClient {
 
     private GenerationBoundaryException invalidResponse(String message) {
         return new GenerationBoundaryException(message);
+    }
+
+    private String safeRequestId(ResponseEntity<?> response) {
+        String requestId = response.getHeaders().getFirst(OPENAI_REQUEST_ID_HEADER);
+        if (!StringUtils.hasText(requestId) || requestId.length() > 200) {
+            return "unavailable";
+        }
+        return requestId.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 }

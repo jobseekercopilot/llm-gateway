@@ -14,6 +14,15 @@ openai:
   api-key: ${OPENAI_API_KEY:}
   model: ${OPENAI_MODEL:}
   endpoint: ${OPENAI_ENDPOINT:https://api.openai.com/v1/chat/completions}
+  organization-id: ${OPENAI_ORGANIZATION_ID:}
+  project-id: ${OPENAI_PROJECT_ID:}
+  data-region: ${OPENAI_DATA_REGION:}
+  data-control-mode: ${OPENAI_DATA_CONTROL_MODE:}
+  data-sharing-mode: ${OPENAI_DATA_SHARING_MODE:}
+  privacy-policy-version: ${OPENAI_PRIVACY_POLICY_VERSION:}
+  privacy-decision-id: ${OPENAI_PRIVACY_DECISION_ID:}
+  privacy-owner: ${OPENAI_PRIVACY_OWNER:}
+  privacy-review-on: ${OPENAI_PRIVACY_REVIEW_ON:}
   connect-timeout: ${OPENAI_CONNECT_TIMEOUT_MS:10000}
   read-timeout: ${OPENAI_READ_TIMEOUT_MS:60000}
 
@@ -37,3 +46,9 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] [%X{serviceName}] [%thread] %logger{36} - %msg%n"
   level:
     com.jobseekercopilot: ${APP_LOG_LEVEL:INFO}
+    org.springframework.web.HttpLogging: INFO
+    org.springframework.web.client.RestTemplate: INFO
+    org.springframework.web.method.HandlerMethod: INFO
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO
+    org.springframework.web.servlet.mvc.method.annotation.HttpEntityMethodProcessor: INFO
+    org.springframework.web.servlet.mvc.method.annotation.RequestResponseBodyMethodProcessor: INFO

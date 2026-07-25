@@ -68,8 +68,13 @@ Cover Letter Service owns domain prompts and response interpretation.
    the approved content-safety policy remain open.
 9. Metrics do not cover provider latency/error class, rate limits, retries,
    input/output tokens, estimated cost, invalid response, or circuit state.
-10. The privacy decision for data retention, training controls, processing
-    region, contractual terms, and deletion is not documented.
+10. **Gateway-side foundation addressed by LLM-02.** LIVE now fails closed
+    without an exact organisation/project, region-matched endpoint, explicit
+    retention/data-sharing declaration, current decision reference, named
+    owner and review date. Requests send `store=false` and payload-capable
+    framework loggers are held above DEBUG with a fail-closed startup guard.
+    Actual account/project evidence, owner approval and DOCGEN-18 end-to-end
+    minimum-data, notice and deletion execution remain beta blockers.
 11. The Dockerfile lacks a non-root runtime, digest-pinned bases, explicit
     resource constraints, and supply-chain scan evidence.
 12. Wider document-generation consumers still need the same reproducible
@@ -84,6 +89,7 @@ schema-constrained output, fail-closed credentials/modes, safe timeout and
 resilience policies, idempotency and quotas, cost/usage metrics without prompt
 logging, reproducible contracts, and deterministic failure tests.
 
-The provider retention, training, and regional-processing decision remains
-open and must be based on current official provider documentation and the
-applicable product agreement. This is not legal or GDPR certification.
+The dated provider evidence and operating checklist are in
+[`OPENAI_PROVIDER_DATA_DECISION.md`](OPENAI_PROVIDER_DATA_DECISION.md).
+Account/project settings, applicable agreement and named-owner approval remain
+open evidence. This is not legal or GDPR certification.

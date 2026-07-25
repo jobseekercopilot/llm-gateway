@@ -12,6 +12,15 @@ public class OpenAiConfiguration {
     private String apiKey;
     private String model;
     private String endpoint = "https://api.openai.com/v1/chat/completions";
+    private String organizationId;
+    private String projectId;
+    private OpenAiDataRegion dataRegion;
+    private OpenAiDataControlMode dataControlMode;
+    private OpenAiDataSharingMode dataSharingMode;
+    private String privacyPolicyVersion;
+    private String privacyDecisionId;
+    private String privacyOwner;
+    private String privacyReviewOn;
     private int connectTimeout = 10000;
     private int readTimeout = 60000;
 }

@@ -6,9 +6,11 @@ text or strict JSON Schema output contracts, enforces request/response bounds
 and supports fail-closed disabled, live and deterministic fixture modes.
 
 The service is still **not beta-ready** until retry/quota/cost controls,
-provider privacy decisions and all approved consumers are completed. See
+provider account/privacy approval and all approved consumers are completed. See
 [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md) and
 [`docs/PROVIDER_NEUTRAL_CONTRACT.md`](docs/PROVIDER_NEUTRAL_CONTRACT.md).
+The dated provider evidence and operator checklist are in
+[`docs/OPENAI_PROVIDER_DATA_DECISION.md`](docs/OPENAI_PROVIDER_DATA_DECISION.md).
 
 ## Technology
 
@@ -34,8 +36,10 @@ The safe default is `EXTERNAL_PROVIDER_MODE=DISABLED`.
 
 - `FIXTURE` requires the System Data URL, dataset ID/version and scenario, and
   cannot start in a production profile.
-- `LIVE` requires runtime-only `OPENAI_API_KEY`, explicit `OPENAI_MODEL`, an
-  HTTPS endpoint and positive timeouts, and cannot start in test/E2E profiles.
+- `LIVE` requires runtime-only credentials, explicit model, exact
+  organisation/project, region-matched Chat Completions endpoint, declared
+  retention/data-sharing controls, a named owner, a current decision reference
+  and positive timeouts. It cannot start in test/E2E profiles.
 - The removed `LLM_MOCK_MODE` setting is rejected rather than silently ignored.
 
 Never commit a credential. CI and automated tests use fixture or mocked
