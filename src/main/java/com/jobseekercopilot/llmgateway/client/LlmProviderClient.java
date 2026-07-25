@@ -1,7 +1,8 @@
 package com.jobseekercopilot.llmgateway.client;
 
-import com.jobseekercopilot.llmgateway.dto.GenerateRequest;
+import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
+import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
 
 public interface LlmProviderClient {
-    OpenAiGenerationResult generate(GenerateRequest request);
+    ProviderGenerationResult generate(GenerationCommand command);
 }

@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Token usage reported by the LLM provider")
+@Schema(description = "Deprecated v1 adapter-specific usage metadata")
 public class LlmUsage {
     @Schema(example = "OPENAI")
     private String provider;

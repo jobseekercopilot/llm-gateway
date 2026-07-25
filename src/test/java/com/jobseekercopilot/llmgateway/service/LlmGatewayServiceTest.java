@@ -1,109 +1,141 @@
 package com.jobseekercopilot.llmgateway.service;
 
-import com.jobseekercopilot.llmgateway.client.OpenAiClient;
-import com.jobseekercopilot.llmgateway.client.OpenAiGenerationResult;
-import com.jobseekercopilot.llmgateway.config.LlmConfiguration;
-import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jobseekercopilot.llmgateway.client.LlmProviderClient;
+import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
+import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
+import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
 import com.jobseekercopilot.llmgateway.dto.GenerateRequest;
 import com.jobseekercopilot.llmgateway.dto.GenerateResponse;
-import com.jobseekercopilot.llmgateway.dto.LlmUsage;
+import com.jobseekercopilot.llmgateway.dto.GenerationLimits;
+import com.jobseekercopilot.llmgateway.dto.GenerationOutputContract;
+import com.jobseekercopilot.llmgateway.dto.GenerationOutputFormat;
+import com.jobseekercopilot.llmgateway.dto.GenerationRequest;
+import com.jobseekercopilot.llmgateway.dto.GenerationResponse;
+import com.jobseekercopilot.llmgateway.dto.GenerationUsage;
+import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class LlmGatewayServiceTest {
 
     @Mock
-    private OpenAiClient openAiClient;
+    private LlmProviderClient providerClient;
 
-    @Mock
-    private LlmConfiguration llmConfiguration;
-
-    @Mock
-    private OpenAiConfiguration openAiConfiguration;
-
-    private LlmGatewayService llmGatewayService;
+    private LlmGatewayService service;
 
     @BeforeEach
     void setUp() {
-        llmGatewayService = new LlmGatewayService(openAiClient, llmConfiguration, openAiConfiguration);
+        service = new LlmGatewayService(providerClient);
     }
 
     @Test
-    void testSuccessfulGeneration() {
-        when(llmConfiguration.isMockMode()).thenReturn(false);
-        when(openAiConfiguration.getModel()).thenReturn("gpt-4.1-mini");
-        when(openAiClient.generate(any(GenerateRequest.class)))
-                .thenReturn(new OpenAiGenerationResult("Generated content", usage()));
+    void mapsV2RequestToProviderNeutralCommandWithoutLeakingAdapterMetadata() throws Exception {
+        when(providerClient.generate(any())).thenReturn(result("openai", "adapter-model"));
 
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt("Test prompt");
-        request.setTemperature(0.5);
-        request.setMaxTokens(1000);
+        GenerationResponse response = service.generate(jsonSchemaRequest());
 
-        GenerateResponse response = llmGatewayService.generate(request);
-
-        assertNotNull(response);
-        assertEquals("OPENAI", response.getProvider());
-        assertEquals("gpt-4.1-mini", response.getModel());
-        assertEquals("Generated content", response.getResponse());
-        assertEquals(7300L, response.getUsage().getTotalTokens());
-
-        verify(llmConfiguration).isMockMode();
-        verify(openAiClient).generate(any(GenerateRequest.class));
+        ArgumentCaptor<GenerationCommand> command = ArgumentCaptor.forClass(GenerationCommand.class);
+        verify(providerClient).generate(command.capture());
+        assertEquals("DOCUMENT_DRAFT", command.getValue().task());
+        assertEquals("Use approved facts only.", command.getValue().trustedInstructions());
+        assertEquals("{\"job\":\"untrusted\"}", command.getValue().untrustedInput());
+        assertEquals(GenerationOutputFormat.JSON_SCHEMA, command.getValue().outputFormat());
+        assertEquals("document-output", command.getValue().schemaId());
+        assertEquals(3000, command.getValue().maxOutputTokens());
+        assertEquals("2.0", response.contractVersion());
+        assertEquals("{\"document\":\"ok\"}", response.output());
+        assertEquals("document-output", response.schemaId());
+        assertEquals(7300L, response.usage().totalTokens());
     }
 
     @Test
-    void testMockModeGeneration() {
-        when(llmConfiguration.isMockMode()).thenReturn(true);
-
+    void mapsDeprecatedV1RequestThroughTheSameProviderBoundary() {
+        when(providerClient.generate(any())).thenReturn(result("fixture", "fixture-model"));
         GenerateRequest request = new GenerateRequest();
-        request.setPrompt("Test prompt");
+        request.setTaskType("DOCUMENT_DRAFT");
+        request.setPrompt("Legacy combined prompt");
+        request.setTemperature(0.3);
+        request.setMaxTokens(3000);
 
-        GenerateResponse response = llmGatewayService.generate(request);
+        GenerateResponse response = service.generateLegacy(request);
 
-        assertNotNull(response);
-        assertEquals("MOCK", response.getProvider());
-        assertEquals("mock-model", response.getModel());
-        assertEquals(3000L, response.getUsage().getTotalTokens());
-        assertTrue(response.getResponse().contains("\"cv\""));
-
-        verify(llmConfiguration).isMockMode();
-        verifyNoInteractions(openAiClient);
+        ArgumentCaptor<GenerationCommand> command = ArgumentCaptor.forClass(GenerationCommand.class);
+        verify(providerClient).generate(command.capture());
+        assertEquals("Legacy combined prompt", command.getValue().trustedInstructions());
+        assertEquals(GenerationOutputFormat.TEXT, command.getValue().outputFormat());
+        assertEquals("FIXTURE", response.getProvider());
+        assertEquals("fixture-model", response.getModel());
     }
 
     @Test
-    void testGenerationWithDefaults() {
-        when(llmConfiguration.isMockMode()).thenReturn(false);
-        when(openAiConfiguration.getModel()).thenReturn("gpt-4.1-mini");
-        when(openAiClient.generate(any(GenerateRequest.class)))
-                .thenReturn(new OpenAiGenerationResult("Default test content", usage()));
+    void rejectsOversizedProviderOutput() {
+        when(providerClient.generate(any())).thenReturn(new ProviderGenerationResult(
+                "x".repeat(LlmGatewayService.MAX_RESPONSE_CHARACTERS + 1),
+                new GenerationUsage(1, 1, 2),
+                GenerationFinishReason.COMPLETED,
+                "fixture",
+                "fixture-model"
+        ));
 
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt("Test prompt");
-
-        GenerateResponse response = llmGatewayService.generate(request);
-
-        assertNotNull(response);
-        assertEquals("OPENAI", response.getProvider());
-        assertEquals("gpt-4.1-mini", response.getModel());
-        assertEquals("Default test content", response.getResponse());
+        assertThrows(GenerationBoundaryException.class, () -> service.generate(textRequest()));
     }
 
-    private LlmUsage usage() {
-        return LlmUsage.builder()
-                .provider("OPENAI")
-                .model("gpt-4.1-mini")
-                .inputTokens(4200L)
-                .outputTokens(3100L)
-                .totalTokens(7300L)
-                .build();
+    @Test
+    void rejectsIncompleteProviderMetadata() {
+        when(providerClient.generate(any())).thenReturn(new ProviderGenerationResult(
+                "content", null, GenerationFinishReason.COMPLETED, "fixture", "fixture-model"));
+
+        assertThrows(GenerationBoundaryException.class, () -> service.generate(textRequest()));
+    }
+
+    private GenerationRequest jsonSchemaRequest() throws Exception {
+        return new GenerationRequest(
+                "2.0",
+                "DOCUMENT_DRAFT",
+                "Use approved facts only.",
+                "{\"job\":\"untrusted\"}",
+                new GenerationOutputContract(
+                        GenerationOutputFormat.JSON_SCHEMA,
+                        "document-output",
+                        "1.0",
+                        new ObjectMapper().readTree("""
+                                {"type":"object","additionalProperties":false}
+                                """)
+                ),
+                new GenerationLimits(3000, 0.3)
+        );
+    }
+
+    private GenerationRequest textRequest() {
+        return new GenerationRequest(
+                "2.0",
+                "DOCUMENT_DRAFT",
+                "Use approved facts only.",
+                "Untrusted source data",
+                new GenerationOutputContract(GenerationOutputFormat.TEXT, null, null, null),
+                new GenerationLimits(3000, 0.3)
+        );
+    }
+
+    private ProviderGenerationResult result(String adapter, String model) {
+        return new ProviderGenerationResult(
+                "{\"document\":\"ok\"}",
+                new GenerationUsage(4200, 3100, 7300),
+                GenerationFinishReason.COMPLETED,
+                adapter,
+                model
+        );
     }
 }

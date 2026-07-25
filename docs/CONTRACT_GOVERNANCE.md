@@ -1,5 +1,27 @@
 # System Data contract governance
 
+## LLM Gateway producer contract
+
+The reviewed public producer snapshot is `contracts/openapi.json`. API `2.0.0`
+adds `POST /api/v2/generations` as the provider-neutral bounded contract. The
+deprecated v1 endpoint remains temporarily compatible while approved consumers
+migrate.
+
+Any producer contract change must:
+
+- preserve provider-neutral v2 schemas and stable limits/failures;
+- reject unknown fields and incompatible output contracts;
+- export from the running application and review the diff;
+- use a major version for incompatible changes;
+- publish a revision-pinned client before consumer rollout;
+- retain the previous contract and client until consumer compatibility is
+  proven.
+
+The request/response semantics, mode matrix and rollback procedure are in
+[`PROVIDER_NEUTRAL_CONTRACT.md`](PROVIDER_NEUTRAL_CONTRACT.md).
+
+## System Data consumer contract
+
 System Data is the producer for the fixture client used by LLM Gateway. LLM
 Gateway builds that client from reviewed source during Maven
 `generate-sources`; no compiled client JAR is committed or loaded from

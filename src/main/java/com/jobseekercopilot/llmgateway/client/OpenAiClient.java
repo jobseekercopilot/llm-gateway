@@ -1,9 +1,14 @@
 package com.jobseekercopilot.llmgateway.client;
 
 import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
+import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
+import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
+import com.jobseekercopilot.llmgateway.dto.GenerationOutputFormat;
+import com.jobseekercopilot.llmgateway.dto.GenerationUsage;
+import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
+import com.jobseekercopilot.llmgateway.exception.GenerationRefusedException;
 import com.jobseekercopilot.llmgateway.logging.CorrelationIdFilter;
-import com.jobseekercopilot.llmgateway.dto.GenerateRequest;
-import com.jobseekercopilot.llmgateway.dto.LlmUsage;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,27 +22,32 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "external-provider", name = "mode", havingValue = "LIVE", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "external-provider", name = "mode", havingValue = "LIVE")
 public class OpenAiClient implements LlmProviderClient {
 
     private final OpenAiConfiguration openAiConfiguration;
     private final RestTemplate restTemplate;
 
     public OpenAiClient(OpenAiConfiguration openAiConfiguration) {
-        this.openAiConfiguration = openAiConfiguration;
-        this.restTemplate = new RestTemplateBuilder()
+        this(openAiConfiguration, new RestTemplateBuilder()
                 .setConnectTimeout(Duration.ofMillis(openAiConfiguration.getConnectTimeout()))
                 .setReadTimeout(Duration.ofMillis(openAiConfiguration.getReadTimeout()))
-                .build();
+                .build());
+    }
+
+    OpenAiClient(OpenAiConfiguration openAiConfiguration, RestTemplate restTemplate) {
+        this.openAiConfiguration = openAiConfiguration;
+        this.restTemplate = restTemplate;
     }
 
     @Override
-    public OpenAiGenerationResult generate(GenerateRequest request) {
+    public ProviderGenerationResult generate(GenerationCommand command) {
         long startedAt = System.nanoTime();
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -47,20 +57,29 @@ public class OpenAiClient implements LlmProviderClient {
             headers.set(CorrelationIdFilter.HEADER_NAME, correlationId);
         }
 
-        Map<String, Object> requestBody = Map.of(
-                "model", openAiConfiguration.getModel(),
-                "messages", List.of(Map.of(
-                        "role", "user",
-                        "content", request.getPrompt()
-                )),
-                "temperature", request.getTemperature(),
-                "max_tokens", request.getMaxTokens()
-        );
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("model", openAiConfiguration.getModel());
+        requestBody.put("messages", List.of(
+                Map.of("role", "developer", "content", command.trustedInstructions()),
+                Map.of("role", "user", "content", command.untrustedInput())
+        ));
+        requestBody.put("temperature", command.temperature());
+        requestBody.put("max_completion_tokens", command.maxOutputTokens());
+        if (command.outputFormat() == GenerationOutputFormat.JSON_SCHEMA) {
+            requestBody.put("response_format", Map.of(
+                    "type", "json_schema",
+                    "json_schema", Map.of(
+                            "name", command.schemaId(),
+                            "strict", true,
+                            "schema", command.jsonSchema()
+                    )
+            ));
+        }
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         log.info("OpenAI provider request started model={} temperature={} maxTokens={}",
-                openAiConfiguration.getModel(), request.getTemperature(), request.getMaxTokens());
+                openAiConfiguration.getModel(), command.temperature(), command.maxOutputTokens());
 
         ResponseEntity<Map> response = restTemplate.postForEntity(
                 openAiConfiguration.getEndpoint(), entity, Map.class);
@@ -68,59 +87,69 @@ public class OpenAiClient implements LlmProviderClient {
                 response.getStatusCode().value(),
                 (System.nanoTime() - startedAt) / 1_000_000);
 
-        Map<String, Object> responseBody = response.getBody();
+        Map<?, ?> responseBody = response.getBody();
         if (responseBody == null) {
-            throw new RuntimeException("Empty response from OpenAI");
+            throw invalidResponse("The provider response body was empty.");
         }
 
-        List<Map<String, Object>> choices = (List<Map<String, Object>>) responseBody.get("choices");
-        if (choices == null || choices.isEmpty()) {
-            throw new RuntimeException("No choices in OpenAI response");
+        Object choicesValue = responseBody.get("choices");
+        if (!(choicesValue instanceof List<?> choices) || choices.isEmpty()) {
+            throw invalidResponse("The provider response did not contain a choice.");
         }
 
-        Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
-        if (message == null) {
-            throw new RuntimeException("No message in OpenAI choice");
+        if (!(choices.get(0) instanceof Map<?, ?> choice)) {
+            throw invalidResponse("The provider choice was malformed.");
+        }
+        if (!(choice.get("message") instanceof Map<?, ?> message)) {
+            throw invalidResponse("The provider choice did not contain a message.");
+        }
+        Object refusal = message.get("refusal");
+        if ((refusal instanceof String refusalText && StringUtils.hasText(refusalText))
+                || "content_filter".equals(choice.get("finish_reason"))) {
+            throw new GenerationRefusedException();
         }
 
-        String content = (String) message.get("content");
-        if (content == null) {
-            throw new RuntimeException("No content in OpenAI message");
+        if (!(message.get("content") instanceof String content) || !StringUtils.hasText(content)) {
+            throw invalidResponse("The provider message did not contain output.");
         }
 
-        return new OpenAiGenerationResult(content.trim(), mapUsage(responseBody));
+        return new ProviderGenerationResult(
+                content.trim(),
+                mapUsage(responseBody),
+                mapFinishReason(choice.get("finish_reason")),
+                "openai",
+                openAiConfiguration.getModel()
+        );
     }
 
-    private LlmUsage mapUsage(Map<String, Object> responseBody) {
-        Map<String, Object> usage = (Map<String, Object>) responseBody.get("usage");
-        if (usage == null) {
-            log.warn("OpenAI response did not include token usage");
-            return LlmUsage.builder()
-                    .provider("OPENAI")
-                    .model(openAiConfiguration.getModel())
-                    .inputTokens(0L)
-                    .outputTokens(0L)
-                    .totalTokens(0L)
-                    .build();
+    private GenerationUsage mapUsage(Map<?, ?> responseBody) {
+        if (!(responseBody.get("usage") instanceof Map<?, ?> usage)) {
+            throw invalidResponse("The provider response did not contain token usage.");
         }
 
         Long inputTokens = numberToLong(usage.get("prompt_tokens"));
         Long outputTokens = numberToLong(usage.get("completion_tokens"));
         Long totalTokens = numberToLong(usage.get("total_tokens"));
+        if (inputTokens == null || outputTokens == null) {
+            throw invalidResponse("The provider token usage was incomplete.");
+        }
         if (totalTokens == null && inputTokens != null && outputTokens != null) {
             totalTokens = inputTokens + outputTokens;
         }
-        if (totalTokens == null) {
-            log.warn("OpenAI token usage was present but missing total_tokens");
-        }
 
-        return LlmUsage.builder()
-                .provider("OPENAI")
-                .model(openAiConfiguration.getModel())
-                .inputTokens(inputTokens == null ? 0L : inputTokens)
-                .outputTokens(outputTokens == null ? 0L : outputTokens)
-                .totalTokens(totalTokens == null ? 0L : totalTokens)
-                .build();
+        return new GenerationUsage(inputTokens, outputTokens, totalTokens);
+    }
+
+    private GenerationFinishReason mapFinishReason(Object value) {
+        if (!(value instanceof String finishReason)) {
+            return GenerationFinishReason.UNKNOWN;
+        }
+        return switch (finishReason) {
+            case "stop" -> GenerationFinishReason.COMPLETED;
+            case "length" -> GenerationFinishReason.LIMIT_REACHED;
+            case "content_filter" -> GenerationFinishReason.FILTERED;
+            default -> GenerationFinishReason.UNKNOWN;
+        };
     }
 
     private Long numberToLong(Object value) {
@@ -128,5 +157,9 @@ public class OpenAiClient implements LlmProviderClient {
             return number.longValue();
         }
         return null;
+    }
+
+    private GenerationBoundaryException invalidResponse(String message) {
+        return new GenerationBoundaryException(message);
     }
 }

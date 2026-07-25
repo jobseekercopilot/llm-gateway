@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class OpenAiConfiguration {
 
     private String apiKey;
-    private String model = "gpt-4.1-mini";
+    private String model;
     private String endpoint = "https://api.openai.com/v1/chat/completions";
     private int connectTimeout = 10000;
     private int readTimeout = 60000;

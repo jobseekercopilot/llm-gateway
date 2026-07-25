@@ -4,6 +4,14 @@ Audit date: 2026-07-23
 
 Status: **Not ready for private beta**
 
+LLM-01 producer update: the gateway now exposes a bounded provider-neutral v2
+contract, separates trusted instructions from untrusted data, supports strict
+JSON Schema output mapping, rejects invalid request/provider response bounds,
+documents stable failures, and fails closed by deployment mode. The deprecated
+v1 endpoint remains temporarily for consumer compatibility. This closes the
+gateway-side portions of findings 1, 2, 3, 5 and 7 below; consumer migration
+and the other findings remain beta work.
+
 ## Verified responsibility
 
 The gateway exposes an internal generation endpoint. Live mode currently uses
@@ -34,24 +42,30 @@ Cover Letter Service owns domain prompts and response interpretation.
   vulnerability matches, including 17 Critical and 37 High matches. Results
   require reachability/false-positive triage; the report was not committed.
 
-## Confirmed blockers
+## Original blockers and current disposition
 
-1. The internal response contract uses provider-specific
-   `OpenAiGenerationResult` naming and leaks implementation detail.
-2. Live generation sends one unrestricted user message; there is no separate
-   trusted instruction boundary or provider-enforced structured-output schema.
-3. Request validation has no maximum prompt length or maximum token ceiling;
-   response body size is not bounded.
+1. **Gateway-side addressed by LLM-01.** The v2 internal response contract uses
+   provider-neutral naming and does not expose adapter/model identifiers.
+2. **Gateway-side addressed by LLM-01; consumer migration remains.** V2 keeps
+   trusted instructions and untrusted data in separate roles and maps strict
+   structured output. The deprecated v1 consumer cannot express that boundary.
+3. **Gateway-side addressed by LLM-01.** Request fields, tokens, temperature,
+   JSON Schema and provider output now have explicit bounds.
 4. There is no governed retry/backoff policy, circuit breaker, rate limit,
    concurrency limit, idempotency, or cancellation contract.
-5. Provider errors are parsed through generic maps/casts and are not mapped to
-   a complete stable internal failure taxonomy.
+5. **Gateway-side addressed by LLM-01.** Existing adapter parsing remains
+   isolated behind a provider-neutral interface and maps to documented stable
+   internal failures. A future Responses API transport migration is recorded
+   separately as BACKLOG-LLM-01.
 6. There is no per-request cost estimate, price/model version record, user
    budget enforcement, warning threshold, or retry/regeneration cost guard.
-7. Production fail-closed startup behaviour for absent/invalid credentials and
-   conflicting fixture/mock modes is incomplete.
-8. No provider content-safety policy, maximum output validation, or
-   domain-neutral structured response envelope is enforced.
+7. **Gateway-side addressed by LLM-01.** DISABLED is the default, FIXTURE is
+   forbidden in production, LIVE is forbidden in test/fixture profiles and
+   requires plausible credentials, explicit model, HTTPS endpoint and positive
+   timeouts. Obsolete mock configuration fails startup.
+8. **Partially addressed by LLM-01.** V2 provides the bounded domain-neutral
+   envelope and refusal/filter failure mapping. Domain output validation and
+   the approved content-safety policy remain open.
 9. Metrics do not cover provider latency/error class, rate limits, retries,
    input/output tokens, estimated cost, invalid response, or circuit state.
 10. The privacy decision for data retention, training controls, processing
