@@ -77,7 +77,7 @@ Exactly one `EXTERNAL_PROVIDER_MODE` is active:
 | --- | --- | --- |
 | `DISABLED` | None | Safe default; generation returns `GENERATION_DISABLED`. |
 | `FIXTURE` | System Data fixture only | Dataset ID/version, scenario and System Data URL; forbidden in `prod`/`production`. |
-| `LIVE` | Configured model provider | Runtime credential of plausible length, explicit model, HTTPS endpoint and positive timeouts; forbidden in `test`, `e2e` and `fixture` profiles. |
+| `LIVE` | OpenAI Chat Completions | Runtime credential, explicit model, exact organisation/project, region-matched endpoint, approved privacy declaration and positive timeouts; forbidden in `test`, `e2e` and `fixture` profiles. |
 
 The obsolete `LLM_MOCK_MODE` / `llm.mock-mode` setting causes startup failure,
 even when set to `false`, so operators cannot mistakenly believe it controls
@@ -87,9 +87,17 @@ LIVE requires:
 
 - `OPENAI_API_KEY`;
 - `OPENAI_MODEL`;
-- optional `OPENAI_ENDPOINT` (HTTPS only);
+- `OPENAI_ORGANIZATION_ID` and `OPENAI_PROJECT_ID`;
+- `OPENAI_DATA_REGION` and its exact HTTPS Chat Completions endpoint;
+- explicit data-control and disabled data-sharing modes;
+- current privacy policy version, durable decision reference, named owner and
+  review date;
 - optional positive `OPENAI_CONNECT_TIMEOUT_MS` and
   `OPENAI_READ_TIMEOUT_MS`.
+
+The complete settings, region matrix, evidence checklist, deletion and incident
+responsibilities are in
+[`OPENAI_PROVIDER_DATA_DECISION.md`](OPENAI_PROVIDER_DATA_DECISION.md).
 
 ## Adapter mapping
 
@@ -98,6 +106,7 @@ The current live adapter uses Chat Completions behind the neutral interface:
 - trusted instructions map to a `developer` message;
 - untrusted input maps to a `user` message;
 - output limits map to `max_completion_tokens`;
+- every request sends `store=false` and exact organisation/project headers;
 - `JSON_SCHEMA` maps to strict `response_format.json_schema`;
 - token usage and finish reasons map to neutral domain values;
 - refusal/content filtering maps to the stable `GENERATION_REFUSED` failure.
@@ -125,8 +134,9 @@ can migrate it to the Responses API without changing the v2 caller contract.
 | `INVALID_PROVIDER_RESPONSE` | Output or metadata violated the internal boundary. |
 
 Retry, circuit, quota and cost-accounting policy remains with DOCGEN-10 and
-DOCGEN-11. Provider privacy, retention and processing-region decisions remain
-with LLM-02.
+DOCGEN-11. LLM-02 supplies the provider privacy-control foundation; its account
+evidence and owner approval remain outstanding, and DOCGEN-18 owns end-to-end
+minimum-data, notice and deletion execution.
 
 ## Deprecated v1 migration
 

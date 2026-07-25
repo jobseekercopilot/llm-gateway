@@ -3,10 +3,16 @@ package com.jobseekercopilot.llmgateway.config;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProviderModeSafetyTest {
+    private static final Clock REVIEW_CLOCK =
+            Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC);
 
     @Test
     void disabledIsTheSafeDefault() {
@@ -37,9 +43,9 @@ class ProviderModeSafetyTest {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(ExternalProviderMode.LIVE);
         OpenAiConfiguration configuration = validLiveConfiguration();
-        configuration.setEndpoint("http://provider.invalid/v1");
+        configuration.setEndpoint("http://api.openai.com/v1/chat/completions");
         ProviderModeSafety insecureEndpoint = new ProviderModeSafety(
-                properties, fixtureProperties(), configuration, new MockEnvironment());
+                properties, fixtureProperties(), configuration, new MockEnvironment(), REVIEW_CLOCK);
         assertThrows(IllegalStateException.class, insecureEndpoint::validate);
     }
 
@@ -48,8 +54,57 @@ class ProviderModeSafetyTest {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(ExternalProviderMode.LIVE);
         ProviderModeSafety safety = new ProviderModeSafety(
-                properties, fixtureProperties(), validLiveConfiguration(), new MockEnvironment());
+                properties, fixtureProperties(), validLiveConfiguration(), new MockEnvironment(), REVIEW_CLOCK);
         assertDoesNotThrow(safety::validate);
+    }
+
+    @Test
+    void liveRejectsMissingOrStalePrivacyDecision() {
+        OpenAiConfiguration missingDecision = validLiveConfiguration();
+        missingDecision.setPrivacyDecisionId("");
+        assertThrows(IllegalStateException.class, () -> liveSafety(missingDecision).validate());
+
+        OpenAiConfiguration stalePolicy = validLiveConfiguration();
+        stalePolicy.setPrivacyPolicyVersion("openai-api-data-controls-2025-01-01");
+        assertThrows(IllegalStateException.class, () -> liveSafety(stalePolicy).validate());
+
+        OpenAiConfiguration expiredReview = validLiveConfiguration();
+        expiredReview.setPrivacyReviewOn("2026-07-24");
+        assertThrows(IllegalStateException.class, () -> liveSafety(expiredReview).validate());
+
+        OpenAiConfiguration distantReview = validLiveConfiguration();
+        distantReview.setPrivacyReviewOn("2027-07-25");
+        assertThrows(IllegalStateException.class, () -> liveSafety(distantReview).validate());
+    }
+
+    @Test
+    void liveRequiresDataSharingToBeDisabled() {
+        OpenAiConfiguration configuration = validLiveConfiguration();
+        configuration.setDataSharingMode(null);
+        assertThrows(IllegalStateException.class, () -> liveSafety(configuration).validate());
+    }
+
+    @Test
+    void livePinsTheDeclaredRegionToItsExactEndpoint() {
+        OpenAiConfiguration configuration = validLiveConfiguration();
+        configuration.setDataRegion(OpenAiDataRegion.UNITED_KINGDOM);
+        configuration.setDataControlMode(OpenAiDataControlMode.ZERO_DATA_RETENTION);
+        configuration.setEndpoint("https://api.openai.com/v1/chat/completions");
+        assertThrows(IllegalStateException.class, () -> liveSafety(configuration).validate());
+
+        configuration.setEndpoint("https://gb.api.openai.com/v1/chat/completions");
+        assertDoesNotThrow(() -> liveSafety(configuration).validate());
+    }
+
+    @Test
+    void nonUsRegionalDataResidencyRequiresEnhancedDataControls() {
+        OpenAiConfiguration configuration = validLiveConfiguration();
+        configuration.setDataRegion(OpenAiDataRegion.EUROPE);
+        configuration.setEndpoint("https://eu.api.openai.com/v1/chat/completions");
+        assertThrows(IllegalStateException.class, () -> liveSafety(configuration).validate());
+
+        configuration.setDataControlMode(OpenAiDataControlMode.MODIFIED_ABUSE_MONITORING);
+        assertDoesNotThrow(() -> liveSafety(configuration).validate());
     }
 
     @Test
@@ -62,7 +117,15 @@ class ProviderModeSafetyTest {
     private ProviderModeSafety safety(ExternalProviderMode mode, MockEnvironment environment) {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(mode);
-        return new ProviderModeSafety(properties, fixtureProperties(), new OpenAiConfiguration(), environment);
+        return new ProviderModeSafety(
+                properties, fixtureProperties(), new OpenAiConfiguration(), environment, REVIEW_CLOCK);
+    }
+
+    private ProviderModeSafety liveSafety(OpenAiConfiguration configuration) {
+        ExternalProviderProperties properties = new ExternalProviderProperties();
+        properties.setMode(ExternalProviderMode.LIVE);
+        return new ProviderModeSafety(
+                properties, fixtureProperties(), configuration, new MockEnvironment(), REVIEW_CLOCK);
     }
 
     private FixtureProperties fixtureProperties() {
@@ -78,7 +141,16 @@ class ProviderModeSafetyTest {
         OpenAiConfiguration configuration = new OpenAiConfiguration();
         configuration.setApiKey("runtime-secret-with-enough-characters");
         configuration.setModel("configured-model");
-        configuration.setEndpoint("https://provider.example/v1/generate");
+        configuration.setEndpoint("https://api.openai.com/v1/chat/completions");
+        configuration.setOrganizationId("org-jobseeker-copilot");
+        configuration.setProjectId("proj_jobseeker_copilot_beta");
+        configuration.setDataRegion(OpenAiDataRegion.GLOBAL);
+        configuration.setDataControlMode(OpenAiDataControlMode.STANDARD_30_DAY_ABUSE_MONITORING);
+        configuration.setDataSharingMode(OpenAiDataSharingMode.DISABLED);
+        configuration.setPrivacyPolicyVersion(ProviderModeSafety.REQUIRED_PRIVACY_POLICY_VERSION);
+        configuration.setPrivacyDecisionId("privacy-decision/llm-02");
+        configuration.setPrivacyOwner("Named privacy owner");
+        configuration.setPrivacyReviewOn("2026-10-25");
         configuration.setConnectTimeout(1000);
         configuration.setReadTimeout(1000);
         return configuration;
