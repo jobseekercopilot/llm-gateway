@@ -49,16 +49,23 @@ Cover Letter Service owns domain prompts and response interpretation.
 2. **Gateway-side addressed by LLM-01; consumer migration remains.** V2 keeps
    trusted instructions and untrusted data in separate roles and maps strict
    structured output. The deprecated v1 consumer cannot express that boundary.
-3. **Gateway-side addressed by LLM-01.** Request fields, tokens, temperature,
-   JSON Schema and provider output now have explicit bounds.
+3. **Gateway-side strengthened by LLM-01 and DOCGEN-10.** Request fields,
+   tokens, temperature, JSON Schema and provider output have explicit bounds;
+   task-specific conservative input/output admission now runs before adapter
+   use and rejects unknown tasks.
 4. There is no governed retry/backoff policy, circuit breaker, rate limit,
    concurrency limit, idempotency, or cancellation contract.
 5. **Gateway-side addressed by LLM-01.** Existing adapter parsing remains
    isolated behind a provider-neutral interface and maps to documented stable
    internal failures. A future Responses API transport migration is recorded
    separately as BACKLOG-LLM-01.
-6. There is no per-request cost estimate, price/model version record, user
-   budget enforcement, warning threshold, or retry/regeneration cost guard.
+6. **Gateway foundation addressed by DOCGEN-10.** V2 now returns the actual
+   model ID, deployment/admission/pricing versions, conservative preflight
+   estimate and rounded-up micro-USD provider-cost estimate from actual token
+   usage. LIVE pins standard service tier and fails startup on fixture/zero-rate
+   policy. Trusted per-user budget/concurrency enforcement, warning thresholds,
+   AI Credit exhaustion and retry/regeneration aggregation remain blocked on
+   PAY-03, PAY-12 and DOCGEN-09.
 7. **Gateway-side addressed by LLM-01.** DISABLED is the default, FIXTURE is
    forbidden in production, LIVE is forbidden in test/fixture profiles and
    requires plausible credentials, explicit model, HTTPS endpoint and positive

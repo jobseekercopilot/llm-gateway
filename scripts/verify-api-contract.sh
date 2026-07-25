@@ -52,6 +52,19 @@ jq -e '
     (.components.schemas.GenerationResponse.additionalProperties == false) and
     (.components.schemas.GenerationResponse.properties | has("provider") | not) and
     (.components.schemas.GenerationResponse.properties | has("model") | not) and
+    (.components.schemas.GenerationResponse.properties.audit["$ref"]
+        == "#/components/schemas/GenerationAudit") and
+    (.components.schemas.GenerationResponse.required | index("audit") != null) and
+    (.components.schemas.GenerationAudit.additionalProperties == false) and
+    ((.components.schemas.GenerationAudit.properties | keys)
+        == ["admissionPolicyVersion", "currency", "estimatedCostMicroUsd",
+            "estimatedInputTokensAtAdmission", "modelDeploymentVersion",
+            "modelId", "pricingVersion"]) and
+    ((.components.schemas.GenerationAudit.required | sort)
+        == ["admissionPolicyVersion", "currency", "estimatedCostMicroUsd",
+            "estimatedInputTokensAtAdmission", "modelDeploymentVersion",
+            "modelId", "pricingVersion"]) and
+    (.components.schemas.GenerationAudit.properties | has("provider") | not) and
     (.components.schemas.ErrorResponse.additionalProperties == false) and
     (.components.schemas.GenerateRequest.properties.prompt.maxLength == 40000) and
     (.components.schemas.GenerateRequest.properties.maxTokens.maximum == 4096) and

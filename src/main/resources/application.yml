@@ -10,6 +10,28 @@ fixture:
   dataset-version: ${FIXTURE_DATASET_VERSION:1.0.0}
   scenario: ${FIXTURE_SCENARIO:happy-path}
 
+generation-controls:
+  admission-policy-version: ${GENERATION_ADMISSION_POLICY_VERSION:document-generation-admission-2026-07}
+  model-id: ${GENERATION_MODEL_ID:fixture-model}
+  model-deployment-version: ${GENERATION_MODEL_DEPLOYMENT_VERSION:fixture-model-deployment-1}
+  pricing-version: ${GENERATION_PRICING_VERSION:non-billable-fixture-1}
+  input-rate-micro-usd-per-million-tokens: ${GENERATION_INPUT_RATE_MICRO_USD_PER_MILLION_TOKENS:0}
+  output-rate-micro-usd-per-million-tokens: ${GENERATION_OUTPUT_RATE_MICRO_USD_PER_MILLION_TOKENS:0}
+  input-token-reserve: ${GENERATION_INPUT_TOKEN_RESERVE:256}
+  tasks:
+    DOCUMENT_DRAFT:
+      max-estimated-input-tokens: ${DOCUMENT_DRAFT_MAX_ESTIMATED_INPUT_TOKENS:60000}
+      max-output-tokens: ${DOCUMENT_DRAFT_MAX_OUTPUT_TOKENS:4096}
+    CV_GENERATION:
+      max-estimated-input-tokens: ${CV_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:60000}
+      max-output-tokens: ${CV_GENERATION_MAX_OUTPUT_TOKENS:4096}
+    COVER_LETTER_GENERATION:
+      max-estimated-input-tokens: ${COVER_LETTER_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:60000}
+      max-output-tokens: ${COVER_LETTER_GENERATION_MAX_OUTPUT_TOKENS:4096}
+    GENERAL_GENERATION:
+      max-estimated-input-tokens: ${GENERAL_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:20000}
+      max-output-tokens: ${GENERAL_GENERATION_MAX_OUTPUT_TOKENS:2048}
+
 openai:
   api-key: ${OPENAI_API_KEY:}
   model: ${OPENAI_MODEL:}

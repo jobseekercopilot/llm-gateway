@@ -22,6 +22,7 @@ public class LlmGatewayService {
     static final int MAX_RESPONSE_CHARACTERS = 100_000;
 
     private final LlmProviderClient llmProviderClient;
+    private final GenerationControls generationControls;
 
     public GenerationResponse generate(GenerationRequest request) {
         GenerationCommand command = new GenerationCommand(
@@ -35,12 +36,14 @@ public class LlmGatewayService {
                 request.getLimits().getMaxOutputTokens(),
                 request.getLimits().getTemperature()
         );
-        ProviderGenerationResult result = execute(command);
+        GenerationAdmission admission = generationControls.admit(command);
+        ProviderGenerationResult result = execute(command, admission);
         return new GenerationResponse(
                 "2.0",
                 result.output(),
                 result.finishReason(),
                 result.usage(),
+                generationControls.audit(result, admission),
                 request.getOutput().getSchemaId(),
                 request.getOutput().getSchemaVersion()
         );
@@ -58,7 +61,8 @@ public class LlmGatewayService {
                 request.getMaxTokens(),
                 request.getTemperature()
         );
-        ProviderGenerationResult result = execute(command);
+        GenerationAdmission admission = generationControls.admit(command);
+        ProviderGenerationResult result = execute(command, admission);
         String provider = result.adapterId().toUpperCase();
         return GenerateResponse.builder()
                 .provider(provider)
@@ -74,10 +78,17 @@ public class LlmGatewayService {
                 .build();
     }
 
-    private ProviderGenerationResult execute(GenerationCommand command) {
+    private ProviderGenerationResult execute(
+            GenerationCommand command,
+            GenerationAdmission admission
+    ) {
         long startedAt = System.nanoTime();
-        log.info("generation request started task={} format={} temperature={} maxOutputTokens={}",
-                command.task(), command.outputFormat(), command.temperature(), command.maxOutputTokens());
+        log.info("generation request admitted task={} format={} temperature={} maxOutputTokens={} estimatedInputTokens={}",
+                command.task(),
+                command.outputFormat(),
+                command.temperature(),
+                command.maxOutputTokens(),
+                admission.estimatedInputTokens());
 
         ProviderGenerationResult result = llmProviderClient.generate(command);
         if (result == null || !StringUtils.hasText(result.output())) {
@@ -92,13 +103,19 @@ public class LlmGatewayService {
         }
         if (result.usage().inputTokens() < 0
                 || result.usage().outputTokens() < 0
-                || result.usage().totalTokens() < result.usage().inputTokens() + result.usage().outputTokens()) {
+                || result.usage().totalTokens()
+                != result.usage().inputTokens() + result.usage().outputTokens()) {
             throw new GenerationBoundaryException("The provider returned invalid token usage.");
         }
+        generationControls.validateActualUsage(command, result, admission);
+        var audit = generationControls.audit(result, admission);
 
-        log.info("generation request completed adapter={} model={} task={} finishReason={} inputTokens={} outputTokens={} totalTokens={} durationMs={}",
+        log.info("generation request completed adapter={} model={} modelDeploymentVersion={} pricingVersion={} estimatedCostMicroUsd={} task={} finishReason={} inputTokens={} outputTokens={} totalTokens={} durationMs={}",
                 result.adapterId(),
                 result.modelId(),
+                audit.modelDeploymentVersion(),
+                audit.pricingVersion(),
+                audit.estimatedCostMicroUsd(),
                 command.task(),
                 result.finishReason(),
                 result.usage().inputTokens(),

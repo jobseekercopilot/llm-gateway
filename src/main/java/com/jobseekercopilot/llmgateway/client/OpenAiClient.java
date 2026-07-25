@@ -11,6 +11,7 @@ import com.jobseekercopilot.llmgateway.exception.GenerationRefusedException;
 import com.jobseekercopilot.llmgateway.logging.CorrelationIdFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -37,6 +38,7 @@ public class OpenAiClient implements LlmProviderClient {
     private final OpenAiConfiguration openAiConfiguration;
     private final RestTemplate restTemplate;
 
+    @Autowired
     public OpenAiClient(OpenAiConfiguration openAiConfiguration) {
         this(openAiConfiguration, new RestTemplateBuilder()
                 .setConnectTimeout(Duration.ofMillis(openAiConfiguration.getConnectTimeout()))
@@ -71,6 +73,7 @@ public class OpenAiClient implements LlmProviderClient {
         requestBody.put("temperature", command.temperature());
         requestBody.put("max_completion_tokens", command.maxOutputTokens());
         requestBody.put("store", false);
+        requestBody.put("service_tier", "default");
         if (command.outputFormat() == GenerationOutputFormat.JSON_SCHEMA) {
             requestBody.put("response_format", Map.of(
                     "type", "json_schema",
@@ -97,6 +100,17 @@ public class OpenAiClient implements LlmProviderClient {
         Map<?, ?> responseBody = response.getBody();
         if (responseBody == null) {
             throw invalidResponse("The provider response body was empty.");
+        }
+        String responseModel = requiredText(
+                responseBody.get("model"),
+                "The provider response did not contain a model ID."
+        );
+        String serviceTier = requiredText(
+                responseBody.get("service_tier"),
+                "The provider response did not contain a service tier."
+        );
+        if (!"default".equals(serviceTier)) {
+            throw invalidResponse("The provider response used an unexpected service tier.");
         }
 
         Object choicesValue = responseBody.get("choices");
@@ -125,7 +139,7 @@ public class OpenAiClient implements LlmProviderClient {
                 mapUsage(responseBody),
                 mapFinishReason(choice.get("finish_reason")),
                 "openai",
-                openAiConfiguration.getModel()
+                responseModel
         );
     }
 
@@ -168,6 +182,13 @@ public class OpenAiClient implements LlmProviderClient {
 
     private GenerationBoundaryException invalidResponse(String message) {
         return new GenerationBoundaryException(message);
+    }
+
+    private String requiredText(Object value, String message) {
+        if (!(value instanceof String text) || !StringUtils.hasText(text) || text.length() > 128) {
+            throw invalidResponse(message);
+        }
+        return text;
     }
 
     private String safeRequestId(ResponseEntity<?> response) {

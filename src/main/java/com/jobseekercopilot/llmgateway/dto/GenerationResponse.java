@@ -12,6 +12,7 @@ public record GenerationResponse(
         String output,
         GenerationFinishReason finishReason,
         GenerationUsage usage,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED) GenerationAudit audit,
         String schemaId,
         String schemaVersion
 ) {

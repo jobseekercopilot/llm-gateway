@@ -42,10 +42,15 @@ The v2 response contains only:
 - generated output;
 - stable finish reason;
 - provider-neutral token usage;
+- non-payload audit metadata: actual model ID, internal deployment/admission
+  policy versions, pricing version, conservative admission estimate and
+  estimated provider cost;
 - the requested schema ID and version.
 
-Adapter and model identifiers are operational metadata. They are available to
-redacted service logs, not to v2 callers.
+Adapter/provider identifiers, request structures and credentials remain
+internal. The actual model ID is exposed only inside the audit object because
+DOCGEN-07 requires durable model-version evidence and DOCGEN-10 requires the
+cost rate to be bound to the model that actually answered.
 
 ## Bounds
 
@@ -59,6 +64,13 @@ Requests fail before adapter use when they exceed these limits:
 | JSON Schema | 20,000 serialized characters |
 | Maximum output | 1–4,096 tokens |
 | Temperature | 0.0–1.0 |
+
+The character limits are followed by a server-owned task admission policy over
+the conservative UTF-8 input estimate (including the JSON Schema and envelope
+reserve) and requested output tokens. Unknown tasks fail closed. Default
+document tasks permit at most a 60,000-token conservative input estimate;
+`GENERAL_GENERATION` permits 20,000. Full calculation and override governance
+are in [`GENERATION_COST_CONTROLS.md`](GENERATION_COST_CONTROLS.md).
 
 Provider output above 100,000 characters, blank output or incomplete usage,
 finish, adapter or model metadata is rejected as
@@ -92,6 +104,8 @@ LIVE requires:
 - explicit data-control and disabled data-sharing modes;
 - current privacy policy version, durable decision reference, named owner and
   review date;
+- exact `GENERATION_MODEL_ID` matching `OPENAI_MODEL`, reviewed deployment,
+  admission and pricing versions, and positive input/output token rates;
 - optional positive `OPENAI_CONNECT_TIMEOUT_MS` and
   `OPENAI_READ_TIMEOUT_MS`.
 
@@ -107,6 +121,8 @@ The current live adapter uses Chat Completions behind the neutral interface:
 - untrusted input maps to a `user` message;
 - output limits map to `max_completion_tokens`;
 - every request sends `store=false` and exact organisation/project headers;
+- every request pins `service_tier=default`, and responses using another tier
+  are rejected before cost metadata is returned;
 - `JSON_SCHEMA` maps to strict `response_format.json_schema`;
 - token usage and finish reasons map to neutral domain values;
 - refusal/content filtering maps to the stable `GENERATION_REFUSED` failure.
@@ -125,6 +141,7 @@ can migrate it to the Responses API without changing the v2 caller contract.
 | --- | --- |
 | `VALIDATION_FAILED` | Request fields violate the contract. |
 | `INVALID_REQUEST` | Malformed JSON or unsupported fields. |
+| `GENERATION_LIMIT_EXCEEDED` | Unknown task or request above the server-owned admission policy. |
 | `GENERATION_DISABLED` | The deployment intentionally has no active adapter. |
 | `GENERATION_REFUSED` | The provider refused or filtered the requested output. |
 | `PROVIDER_AUTHENTICATION_FAILED` | Runtime provider authentication failed. |
@@ -133,10 +150,13 @@ can migrate it to the Responses API without changing the v2 caller contract.
 | `PROVIDER_UNAVAILABLE` | The provider returned a server failure. |
 | `INVALID_PROVIDER_RESPONSE` | Output or metadata violated the internal boundary. |
 
-Retry, circuit, quota and cost-accounting policy remains with DOCGEN-10 and
-DOCGEN-11. LLM-02 supplies the provider privacy-control foundation; its account
-evidence and owner approval remain outstanding, and DOCGEN-18 owns end-to-end
-minimum-data, notice and deletion execution.
+DOCGEN-10 now supplies per-request admission and versioned provider-cost audit
+metadata. Trusted per-user daily/concurrent quotas, warning/credit exhaustion
+and retry/regeneration aggregation remain dependent on DOCGEN-09, PAY-03 and
+PAY-12. Retry/circuit/provider-quota policy remains with DOCGEN-11. LLM-02
+supplies the provider privacy-control foundation; its account evidence and
+owner approval remain outstanding, and DOCGEN-18 owns end-to-end minimum-data,
+notice and deletion execution.
 
 ## Deprecated v1 migration
 

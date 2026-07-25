@@ -91,10 +91,12 @@ current hosts:
 
 The adapter sends an allowlisted text-only payload: model, two separated
 messages, temperature, maximum completion tokens, `store=false`, and strict
-response format only when requested. Organisation and project headers pin the
-declared target. Credentials, prompts, responses, owner names, organisation
-IDs and project IDs are not emitted by application logs. The provider
-`x-request-id` is sanitised and retained in metadata logs for incident support.
+response format only when requested. It also pins `service_tier=default` so
+the reviewed standard token rates apply. Organisation and project headers pin
+the declared target. Credentials, prompts, responses, owner names,
+organisation IDs and project IDs are not emitted by application logs. The
+provider `x-request-id` is sanitised and retained in metadata logs for incident
+support.
 
 Framework loggers known to render HTTP bodies, request DTOs or validation
 rejected values are held above DEBUG even if a generic process-level `DEBUG`

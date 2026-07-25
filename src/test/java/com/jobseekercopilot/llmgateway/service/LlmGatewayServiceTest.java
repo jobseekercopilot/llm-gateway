@@ -2,6 +2,7 @@ package com.jobseekercopilot.llmgateway.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobseekercopilot.llmgateway.client.LlmProviderClient;
+import com.jobseekercopilot.llmgateway.config.GenerationControlProperties;
 import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
 import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
 import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
@@ -14,6 +15,8 @@ import com.jobseekercopilot.llmgateway.dto.GenerationRequest;
 import com.jobseekercopilot.llmgateway.dto.GenerationResponse;
 import com.jobseekercopilot.llmgateway.dto.GenerationUsage;
 import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
+import com.jobseekercopilot.llmgateway.exception.GenerationLimitException;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,12 +41,12 @@ class LlmGatewayServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new LlmGatewayService(providerClient);
+        service = new LlmGatewayService(providerClient, new GenerationControls(controls()));
     }
 
     @Test
     void mapsV2RequestToProviderNeutralCommandWithoutLeakingAdapterMetadata() throws Exception {
-        when(providerClient.generate(any())).thenReturn(result("openai", "adapter-model"));
+        when(providerClient.generate(any())).thenReturn(result("openai", "test-model"));
 
         GenerationResponse response = service.generate(jsonSchemaRequest());
 
@@ -57,12 +61,16 @@ class LlmGatewayServiceTest {
         assertEquals("2.0", response.contractVersion());
         assertEquals("{\"document\":\"ok\"}", response.output());
         assertEquals("document-output", response.schemaId());
-        assertEquals(7300L, response.usage().totalTokens());
+        assertEquals(7100L, response.usage().totalTokens());
+        assertEquals("test-model", response.audit().modelId());
+        assertEquals("test-deployment-1", response.audit().modelDeploymentVersion());
+        assertEquals("test-pricing-1", response.audit().pricingVersion());
+        assertEquals(39_500L, response.audit().estimatedCostMicroUsd());
     }
 
     @Test
     void mapsDeprecatedV1RequestThroughTheSameProviderBoundary() {
-        when(providerClient.generate(any())).thenReturn(result("fixture", "fixture-model"));
+        when(providerClient.generate(any())).thenReturn(result("fixture", "test-model"));
         GenerateRequest request = new GenerateRequest();
         request.setTaskType("DOCUMENT_DRAFT");
         request.setPrompt("Legacy combined prompt");
@@ -76,7 +84,7 @@ class LlmGatewayServiceTest {
         assertEquals("Legacy combined prompt", command.getValue().trustedInstructions());
         assertEquals(GenerationOutputFormat.TEXT, command.getValue().outputFormat());
         assertEquals("FIXTURE", response.getProvider());
-        assertEquals("fixture-model", response.getModel());
+        assertEquals("test-model", response.getModel());
     }
 
     @Test
@@ -96,6 +104,37 @@ class LlmGatewayServiceTest {
     void rejectsIncompleteProviderMetadata() {
         when(providerClient.generate(any())).thenReturn(new ProviderGenerationResult(
                 "content", null, GenerationFinishReason.COMPLETED, "fixture", "fixture-model"));
+
+        assertThrows(GenerationBoundaryException.class, () -> service.generate(textRequest()));
+    }
+
+    @Test
+    void rejectsUnsupportedTaskBeforeCallingProvider() {
+        GenerationRequest request = textRequest();
+        request.setTask("UNSUPPORTED_TASK");
+
+        assertThrows(GenerationLimitException.class, () -> service.generate(request));
+        verifyNoInteractions(providerClient);
+    }
+
+    @Test
+    void rejectsTaskOutputCeilingBeforeCallingProvider() {
+        GenerationRequest request = textRequest();
+        request.setLimits(new GenerationLimits(3001, 0.3));
+
+        assertThrows(GenerationLimitException.class, () -> service.generate(request));
+        verifyNoInteractions(providerClient);
+    }
+
+    @Test
+    void rejectsProviderUsageBeyondTheAdmittedOutputLimit() {
+        when(providerClient.generate(any())).thenReturn(new ProviderGenerationResult(
+                "content",
+                new GenerationUsage(10, 3001, 3011),
+                GenerationFinishReason.COMPLETED,
+                "fixture",
+                "fixture-model"
+        ));
 
         assertThrows(GenerationBoundaryException.class, () -> service.generate(textRequest()));
     }
@@ -132,10 +171,27 @@ class LlmGatewayServiceTest {
     private ProviderGenerationResult result(String adapter, String model) {
         return new ProviderGenerationResult(
                 "{\"document\":\"ok\"}",
-                new GenerationUsage(4200, 3100, 7300),
+                new GenerationUsage(4200, 2900, 7100),
                 GenerationFinishReason.COMPLETED,
                 adapter,
                 model
         );
+    }
+
+    private GenerationControlProperties controls() {
+        GenerationControlProperties controls = new GenerationControlProperties();
+        controls.setAdmissionPolicyVersion("test-admission-1");
+        controls.setModelId("test-model");
+        controls.setModelDeploymentVersion("test-deployment-1");
+        controls.setPricingVersion("test-pricing-1");
+        controls.setInputRateMicroUsdPerMillionTokens(2_500_000);
+        controls.setOutputRateMicroUsdPerMillionTokens(10_000_000);
+        controls.setInputTokenReserve(256);
+        GenerationControlProperties.TaskLimit taskLimit =
+                new GenerationControlProperties.TaskLimit();
+        taskLimit.setMaxEstimatedInputTokens(60_000);
+        taskLimit.setMaxOutputTokens(3000);
+        controls.setTasks(Map.of("DOCUMENT_DRAFT", taskLimit));
+        return controls;
     }
 }
