@@ -84,6 +84,9 @@ The input and output class estimates are then added. Cached-input discounts are
 not subtracted, so the estimate is conservative when a provider applies such a
 discount. Taxes, negotiated discounts, batch/flex/priority pricing, failed
 attempts without usage metadata and non-token fees are not represented.
+DOCGEN-11 therefore keeps automatic provider retries at zero. Each admitted
+request has exactly one observable provider attempt until durable operation
+identity and per-attempt budget aggregation are available.
 
 ## Runtime configuration
 

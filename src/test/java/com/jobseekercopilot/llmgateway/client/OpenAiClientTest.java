@@ -8,9 +8,17 @@ import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
 import com.jobseekercopilot.llmgateway.dto.GenerationOutputFormat;
 import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
 import com.jobseekercopilot.llmgateway.exception.GenerationRefusedException;
+import com.jobseekercopilot.llmgateway.exception.ProviderFailureException;
+import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
+import com.jobseekercopilot.llmgateway.resilience.ProviderCallExecutor;
+import com.jobseekercopilot.llmgateway.resilience.ProviderCircuitBreaker;
+import java.net.SocketException;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
@@ -19,11 +27,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.client.ExpectedCount.once;
+import static org.springframework.test.web.client.ExpectedCount.twice;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 class OpenAiClientTest {
 
@@ -32,6 +43,12 @@ class OpenAiClientTest {
         new ApplicationContextRunner()
                 .withPropertyValues("external-provider.mode=LIVE")
                 .withUserConfiguration(OpenAiConfiguration.class, OpenAiClient.class)
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .withBean(
+                        ProviderCircuitBreaker.class,
+                        () -> new ProviderCircuitBreaker(configuration())
+                )
+                .withBean(ProviderCallExecutor.class, this::directExecutor)
                 .run(context ->
                         assertEquals(1, context.getBeansOfType(OpenAiClient.class).size()));
     }
@@ -191,6 +208,145 @@ class OpenAiClientTest {
         server.verify();
     }
 
+    @Test
+    void adapterMapsProviderAuthenticationFailuresWithoutReturningProviderBodies() {
+        for (HttpStatus status : List.of(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)) {
+            OpenAiConfiguration configuration = configuration();
+            RestTemplate restTemplate = new RestTemplate();
+            MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+            server.expect(once(), requestTo(configuration.getEndpoint()))
+                    .andRespond(withStatus(status)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body("{\"error\":{\"message\":\"sensitive provider detail\"}}"));
+
+            ProviderFailureException exception = assertThrows(
+                    ProviderFailureException.class,
+                    () -> new OpenAiClient(configuration, restTemplate).generate(textCommand())
+            );
+
+            assertEquals(ProviderFailureType.AUTHENTICATION, exception.getType());
+            server.verify();
+        }
+    }
+
+    @Test
+    void adapterDistinguishesQuotaFromRateLimitAndBoundsRetryAfter() {
+        OpenAiConfiguration configuration = configuration();
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                        .header(HttpHeaders.RETRY_AFTER, "42")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"error":{"code":"insufficient_quota","message":"sensitive"}}
+                                """));
+
+        ProviderFailureException exception = assertThrows(
+                ProviderFailureException.class,
+                () -> new OpenAiClient(configuration, restTemplate).generate(textCommand())
+        );
+
+        assertEquals(ProviderFailureType.QUOTA_EXHAUSTED, exception.getType());
+        assertEquals(42L, exception.getRetryAfterSeconds());
+        server.verify();
+    }
+
+    @Test
+    void adapterMapsRateLimitAndProviderOutageToStableFailures() {
+        OpenAiConfiguration configuration = configuration();
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"code\":\"rate_limit_exceeded\"}}"));
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"message\":\"unavailable\"}}"));
+        OpenAiClient client = new OpenAiClient(configuration, restTemplate);
+
+        ProviderFailureException rateLimit = assertThrows(
+                ProviderFailureException.class,
+                () -> client.generate(textCommand())
+        );
+        ProviderFailureException outage = assertThrows(
+                ProviderFailureException.class,
+                () -> client.generate(textCommand())
+        );
+
+        assertEquals(ProviderFailureType.RATE_LIMITED, rateLimit.getType());
+        assertEquals(ProviderFailureType.UNAVAILABLE, outage.getType());
+        server.verify();
+    }
+
+    @Test
+    void adapterMapsConnectionResetWithoutLeakingTransportDetails() {
+        OpenAiConfiguration configuration = configuration();
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andRespond(withException(new SocketException("connection reset with sensitive detail")));
+
+        ProviderFailureException exception = assertThrows(
+                ProviderFailureException.class,
+                () -> new OpenAiClient(configuration, restTemplate).generate(textCommand())
+        );
+
+        assertEquals(ProviderFailureType.UNAVAILABLE, exception.getType());
+        server.verify();
+    }
+
+    @Test
+    void adapterRejectsOversizedProviderBodyBeforeJsonParsing() {
+        OpenAiConfiguration configuration = configuration();
+        configuration.setMaxResponseBytes(128);
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andRespond(withSuccess(
+                        "{\"padding\":\"" + "x".repeat(512) + "\"}",
+                        MediaType.APPLICATION_JSON
+                ));
+
+        ProviderFailureException exception = assertThrows(
+                ProviderFailureException.class,
+                () -> new OpenAiClient(configuration, restTemplate).generate(textCommand())
+        );
+
+        assertEquals(ProviderFailureType.INVALID_RESPONSE, exception.getType());
+        server.verify();
+    }
+
+    @Test
+    void adapterOpensCircuitAfterBoundedConsecutiveOutages() {
+        OpenAiConfiguration configuration = configuration();
+        configuration.setCircuitFailureThreshold(2);
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(twice(), requestTo(configuration.getEndpoint()))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE));
+        OpenAiClient client = new OpenAiClient(configuration, restTemplate);
+
+        assertEquals(
+                ProviderFailureType.UNAVAILABLE,
+                assertThrows(ProviderFailureException.class, () -> client.generate(textCommand()))
+                        .getType()
+        );
+        assertEquals(
+                ProviderFailureType.UNAVAILABLE,
+                assertThrows(ProviderFailureException.class, () -> client.generate(textCommand()))
+                        .getType()
+        );
+        assertEquals(
+                ProviderFailureType.CIRCUIT_OPEN,
+                assertThrows(ProviderFailureException.class, () -> client.generate(textCommand()))
+                        .getType()
+        );
+        server.verify();
+    }
+
     private GenerationCommand textCommand() {
         return new GenerationCommand(
                 "DOCUMENT_DRAFT",
@@ -213,5 +369,17 @@ class OpenAiClientTest {
         configuration.setOrganizationId("org-jobseeker-copilot");
         configuration.setProjectId("proj_jobseeker_copilot_beta");
         return configuration;
+    }
+
+    private ProviderCallExecutor directExecutor() {
+        return providerCall -> {
+            try {
+                return providerCall.call();
+            } catch (RuntimeException exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
+        };
     }
 }

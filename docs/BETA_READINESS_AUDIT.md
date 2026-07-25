@@ -53,8 +53,12 @@ Cover Letter Service owns domain prompts and response interpretation.
    tokens, temperature, JSON Schema and provider output have explicit bounds;
    task-specific conservative input/output admission now runs before adapter
    use and rejects unknown tasks.
-4. There is no governed retry/backoff policy, circuit breaker, rate limit,
-   concurrency limit, idempotency, or cancellation contract.
+4. **Gateway foundation addressed by DOCGEN-11.** Live calls now have one hard
+   caller deadline, a zero-queue concurrency bound, pre-parse response byte
+   limit, stable provider-neutral failures, an open/half-open/recovery circuit,
+   readiness state and documented disconnect/cancellation semantics.
+   Automatic retries are explicitly zero. Durable idempotency and attempt-cost
+   aggregation remain blocked on DOCGEN-09 and final DOCGEN-10 controls.
 5. **Gateway-side addressed by LLM-01.** Existing adapter parsing remains
    isolated behind a provider-neutral interface and maps to documented stable
    internal failures. A future Responses API transport migration is recorded
@@ -73,8 +77,11 @@ Cover Letter Service owns domain prompts and response interpretation.
 8. **Partially addressed by LLM-01.** V2 provides the bounded domain-neutral
    envelope and refusal/filter failure mapping. Domain output validation and
    the approved content-safety policy remain open.
-9. Metrics do not cover provider latency/error class, rate limits, retries,
-   input/output tokens, estimated cost, invalid response, or circuit state.
+9. **Partially addressed by DOCGEN-10 and DOCGEN-11.** Completion logs include
+   latency, actual tokens and versioned estimated cost; failure logs include
+   only the stable class, duration, `attempt=1` and `automaticRetries=0`; the
+   readiness contributor exposes bounded circuit state/counts. Durable
+   time-series counters, alerts and SLOs remain DOCGEN-19.
 10. **Gateway-side foundation addressed by LLM-02.** LIVE now fails closed
     without an exact organisation/project, region-matched endpoint, explicit
     retention/data-sharing declaration, current decision reference, named
@@ -98,5 +105,7 @@ logging, reproducible contracts, and deterministic failure tests.
 
 The dated provider evidence and operating checklist are in
 [`OPENAI_PROVIDER_DATA_DECISION.md`](OPENAI_PROVIDER_DATA_DECISION.md).
+Provider failure, readiness, cancellation and recovery procedure is in
+[`PROVIDER_RESILIENCE_RUNBOOK.md`](PROVIDER_RESILIENCE_RUNBOOK.md).
 Account/project settings, applicable agreement and named-owner approval remain
 open evidence. This is not legal or GDPR certification.

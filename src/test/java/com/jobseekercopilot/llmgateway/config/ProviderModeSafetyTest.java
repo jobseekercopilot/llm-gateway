@@ -108,6 +108,25 @@ class ProviderModeSafetyTest {
     }
 
     @Test
+    void liveFailsClosedOnUnboundedResilienceConfiguration() {
+        OpenAiConfiguration excessiveDeadline = validLiveConfiguration();
+        excessiveDeadline.setCallTimeout(120_001);
+        assertThrows(IllegalStateException.class, () -> liveSafety(excessiveDeadline).validate());
+
+        OpenAiConfiguration responseTooLarge = validLiveConfiguration();
+        responseTooLarge.setMaxResponseBytes(2_097_153);
+        assertThrows(IllegalStateException.class, () -> liveSafety(responseTooLarge).validate());
+
+        OpenAiConfiguration excessiveConcurrency = validLiveConfiguration();
+        excessiveConcurrency.setMaxConcurrentCalls(33);
+        assertThrows(IllegalStateException.class, () -> liveSafety(excessiveConcurrency).validate());
+
+        OpenAiConfiguration invalidCircuit = validLiveConfiguration();
+        invalidCircuit.setCircuitFailureThreshold(0);
+        assertThrows(IllegalStateException.class, () -> liveSafety(invalidCircuit).validate());
+    }
+
+    @Test
     void obsoleteMockSettingFailsEvenWhenFalse() {
         MockEnvironment environment = new MockEnvironment().withProperty("llm.mock-mode", "false");
         assertThrows(IllegalStateException.class,
@@ -152,7 +171,7 @@ class ProviderModeSafetyTest {
         configuration.setPrivacyOwner("Named privacy owner");
         configuration.setPrivacyReviewOn("2026-10-25");
         configuration.setConnectTimeout(1000);
-        configuration.setReadTimeout(1000);
+        configuration.setCallTimeout(1000);
         return configuration;
     }
 }

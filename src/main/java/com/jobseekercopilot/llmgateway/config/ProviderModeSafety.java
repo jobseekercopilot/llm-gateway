@@ -104,8 +104,31 @@ public class ProviderModeSafety implements ApplicationRunner {
         }
         validateProviderIdentity();
         validatePrivacyDecision();
-        if (openAiConfiguration.getConnectTimeout() <= 0 || openAiConfiguration.getReadTimeout() <= 0) {
-            throw new IllegalStateException("LIVE mode requires positive connect and read timeouts.");
+        if (openAiConfiguration.getConnectTimeout() <= 0
+                || openAiConfiguration.getCallTimeout() <= 0
+                || openAiConfiguration.getConnectTimeout() > openAiConfiguration.getCallTimeout()) {
+            throw new IllegalStateException(
+                    "LIVE mode requires positive timeouts and a connect timeout within the provider-call deadline.");
+        }
+        if (openAiConfiguration.getCallTimeout() > 120_000) {
+            throw new IllegalStateException("LIVE mode caps the provider-call deadline at 120 seconds.");
+        }
+        if (openAiConfiguration.getMaxResponseBytes() < 1024
+                || openAiConfiguration.getMaxResponseBytes() > 2_097_152) {
+            throw new IllegalStateException(
+                    "LIVE mode requires a provider response limit between 1 KiB and 2 MiB.");
+        }
+        if (openAiConfiguration.getMaxConcurrentCalls() < 1
+                || openAiConfiguration.getMaxConcurrentCalls() > 32) {
+            throw new IllegalStateException(
+                    "LIVE mode requires provider concurrency between 1 and 32.");
+        }
+        if (openAiConfiguration.getCircuitFailureThreshold() < 1
+                || openAiConfiguration.getCircuitFailureThreshold() > 20
+                || openAiConfiguration.getCircuitOpenDuration() < 1_000
+                || openAiConfiguration.getCircuitOpenDuration() > 300_000) {
+            throw new IllegalStateException(
+                    "LIVE mode requires bounded provider circuit thresholds and recovery duration.");
         }
         URI endpoint;
         try {

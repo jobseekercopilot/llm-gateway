@@ -72,10 +72,12 @@ document tasks permit at most a 60,000-token conservative input estimate;
 `GENERAL_GENERATION` permits 20,000. Full calculation and override governance
 are in [`GENERATION_COST_CONTROLS.md`](GENERATION_COST_CONTROLS.md).
 
-Provider output above 100,000 characters, blank output or incomplete usage,
-finish, adapter or model metadata is rejected as
-`INVALID_PROVIDER_RESPONSE`. These character bounds complement, rather than
-replace, the domain service schema and factuality validation.
+The adapter rejects the response before JSON parsing when it exceeds the
+configured byte limit (1 MiB by default and at most 2 MiB). Provider output
+above 100,000 characters, blank output or incomplete usage, finish, adapter or
+model metadata is also rejected as `INVALID_PROVIDER_RESPONSE`. These byte and
+character bounds complement, rather than replace, the domain service schema
+and factuality validation.
 
 Unknown JSON fields are rejected. A `TEXT` output must not supply schema
 properties. A `JSON_SCHEMA` output requires a lowercase stable schema ID,
@@ -107,7 +109,10 @@ LIVE requires:
 - exact `GENERATION_MODEL_ID` matching `OPENAI_MODEL`, reviewed deployment,
   admission and pricing versions, and positive input/output token rates;
 - optional positive `OPENAI_CONNECT_TIMEOUT_MS` and
-  `OPENAI_READ_TIMEOUT_MS`.
+  `OPENAI_CALL_TIMEOUT_MS`;
+- bounded `OPENAI_MAX_RESPONSE_BYTES`, `OPENAI_MAX_CONCURRENT_CALLS`,
+  `OPENAI_CIRCUIT_FAILURE_THRESHOLD` and
+  `OPENAI_CIRCUIT_OPEN_DURATION_MS`.
 
 The complete settings, region matrix, evidence checklist, deletion and incident
 responsibilities are in
@@ -146,14 +151,23 @@ can migrate it to the Responses API without changing the v2 caller contract.
 | `GENERATION_REFUSED` | The provider refused or filtered the requested output. |
 | `PROVIDER_AUTHENTICATION_FAILED` | Runtime provider authentication failed. |
 | `PROVIDER_RATE_LIMITED` | Provider capacity rejected the request. |
+| `PROVIDER_QUOTA_EXHAUSTED` | The approved provider account has no remaining quota. |
 | `PROVIDER_TIMEOUT` | The provider did not respond within the configured deadline. |
 | `PROVIDER_UNAVAILABLE` | The provider returned a server failure. |
+| `PROVIDER_CAPACITY_EXHAUSTED` | The bounded local provider call pool is full. |
+| `PROVIDER_REQUEST_REJECTED` | The provider rejected a bounded non-transient request. |
+| `PROVIDER_CIRCUIT_OPEN` | Calls are paused during provider recovery. |
+| `PROVIDER_CALL_CANCELLED` | The waiting application thread was interrupted. |
 | `INVALID_PROVIDER_RESPONSE` | Output or metadata violated the internal boundary. |
 
 DOCGEN-10 now supplies per-request admission and versioned provider-cost audit
 metadata. Trusted per-user daily/concurrent quotas, warning/credit exhaustion
 and retry/regeneration aggregation remain dependent on DOCGEN-09, PAY-03 and
-PAY-12. Retry/circuit/provider-quota policy remains with DOCGEN-11. LLM-02
+PAY-12. DOCGEN-11 supplies the zero-retry bounded-call, stable failure, circuit
+and readiness foundation. Automatic retries remain disabled until DOCGEN-09
+and final DOCGEN-10 attempt accounting make them idempotent and budget-safe.
+Operational recovery and cancellation semantics are in
+[`PROVIDER_RESILIENCE_RUNBOOK.md`](PROVIDER_RESILIENCE_RUNBOOK.md). LLM-02
 supplies the provider privacy-control foundation; its account evidence and
 owner approval remain outstanding, and DOCGEN-18 owns end-to-end minimum-data,
 notice and deletion execution.

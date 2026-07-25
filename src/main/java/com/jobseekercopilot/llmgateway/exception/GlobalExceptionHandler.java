@@ -2,6 +2,7 @@ package com.jobseekercopilot.llmgateway.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -18,6 +19,21 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ProviderFailureException.class)
+    public ResponseEntity<ErrorResponse> handleProviderFailure(ProviderFailureException ex) {
+        ProviderError providerError = providerError(ex.getType());
+        log.warn("Provider call failed failureType={}", ex.getType());
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(providerError.status());
+        if (ex.getRetryAfterSeconds() != null) {
+            response.header(HttpHeaders.RETRY_AFTER, Long.toString(ex.getRetryAfterSeconds()));
+        }
+        return response.body(new ErrorResponse(
+                providerError.status().value(),
+                providerError.code(),
+                providerError.message()
+        ));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException ex) {
@@ -155,4 +171,61 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
+
+    private ProviderError providerError(ProviderFailureType failureType) {
+        return switch (failureType) {
+            case AUTHENTICATION -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_AUTHENTICATION_FAILED",
+                    "Generation is unavailable because the provider configuration was rejected."
+            );
+            case RATE_LIMITED -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_RATE_LIMITED",
+                    "Generation capacity is temporarily unavailable. Please try again later."
+            );
+            case QUOTA_EXHAUSTED -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_QUOTA_EXHAUSTED",
+                    "Generation capacity is temporarily unavailable."
+            );
+            case TIMEOUT -> new ProviderError(
+                    HttpStatus.GATEWAY_TIMEOUT,
+                    "PROVIDER_TIMEOUT",
+                    "Generation did not complete within the provider-call deadline."
+            );
+            case UNAVAILABLE -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_UNAVAILABLE",
+                    "Generation is temporarily unavailable. Please try again later."
+            );
+            case CAPACITY_EXHAUSTED -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_CAPACITY_EXHAUSTED",
+                    "Generation capacity is temporarily unavailable. Please try again later."
+            );
+            case INVALID_RESPONSE -> new ProviderError(
+                    HttpStatus.BAD_GATEWAY,
+                    "INVALID_PROVIDER_RESPONSE",
+                    "The generation adapter returned an invalid response."
+            );
+            case REQUEST_REJECTED -> new ProviderError(
+                    HttpStatus.BAD_GATEWAY,
+                    "PROVIDER_REQUEST_REJECTED",
+                    "The generation adapter rejected the bounded request."
+            );
+            case CIRCUIT_OPEN -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_CIRCUIT_OPEN",
+                    "Generation is temporarily paused while the provider recovers."
+            );
+            case CANCELLED -> new ProviderError(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "PROVIDER_CALL_CANCELLED",
+                    "The generation request was cancelled."
+            );
+        };
+    }
+
+    private record ProviderError(HttpStatus status, String code, String message) {}
 }
