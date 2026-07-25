@@ -5,15 +5,18 @@ The provider-neutral external-model boundary for Job Seeker Copilot. API
 text or strict JSON Schema output contracts, enforces request/response bounds
 and supports fail-closed disabled, live and deterministic fixture modes.
 
-The service is still **not beta-ready** until retry and trusted per-user
-quota/credit controls, provider account/privacy approval and all approved
-consumers are completed. See
+The service is still **not beta-ready** until durable idempotency and trusted
+per-user quota/credit controls, provider account/privacy approval and all
+approved consumers are completed. Automatic provider retries remain disabled
+until those controls make every attempt replay-safe and budgeted. See
 [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md) and
 [`docs/PROVIDER_NEUTRAL_CONTRACT.md`](docs/PROVIDER_NEUTRAL_CONTRACT.md).
 The dated provider evidence and operator checklist are in
 [`docs/OPENAI_PROVIDER_DATA_DECISION.md`](docs/OPENAI_PROVIDER_DATA_DECISION.md).
 Admission and provider-cost controls are documented in
 [`docs/GENERATION_COST_CONTROLS.md`](docs/GENERATION_COST_CONTROLS.md).
+Provider failure, circuit/readiness, cancellation and recovery behaviour is in
+[`docs/PROVIDER_RESILIENCE_RUNBOOK.md`](docs/PROVIDER_RESILIENCE_RUNBOOK.md).
 
 ## Technology
 
@@ -44,7 +47,8 @@ The safe default is `EXTERNAL_PROVIDER_MODE=DISABLED`.
   retention/data-sharing controls, a named owner, a current decision reference
   and positive timeouts. It also requires the exact reviewed model, deployment
   and pricing versions plus non-zero input/output token rates. It cannot start
-  in test/E2E profiles.
+  in test/E2E profiles. Live calls use one hard deadline, a zero-queue bounded
+  pool, a pre-parse response-byte limit and a readiness-integrated circuit.
 - Every mode requires valid server-owned task ceilings. Unknown or oversized
   tasks fail before provider activity. FIXTURE uses explicit zero-cost,
   non-billable audit metadata.
