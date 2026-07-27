@@ -81,12 +81,42 @@ class LlmGatewayControllerIntegrationTest {
             throws Exception {
         GenerationRequest request = textRequest();
         request.setTask("CV_COVER_LETTER_GENERATION");
+        request.setUntrustedInput("""
+                {
+                  "approvedEvidence": {
+                    "records": [
+                      {"evidenceId":"JOB.TITLE","value":"Backend Developer"},
+                      {"evidenceId":"JOB.COMPANY","value":"Example Ltd"}
+                    ]
+                  }
+                }
+                """);
+        when(fixtureControllerApi.llm(any())).thenReturn(new FixtureLlmResponse()
+                .provider("fixture")
+                .model("fixture-model")
+                .response("""
+                        {
+                          "cv":{"title":"Fixture CV","targetRole":"Fixture role"},
+                          "coverLetter":{
+                            "title":"Fixture letter",
+                            "jobTitle":"Fixture role",
+                            "companyName":"Fixture company",
+                            "openingParagraph":"Fixture opening"
+                          },
+                          "generationNotes":{"tailoringSummary":"Fixture summary"}
+                        }
+                        """)
+                .inputTokens(12L)
+                .outputTokens(8L)
+                .totalTokens(20L));
 
         mockMvc.perform(post("/api/v2/generations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.finishReason", is("COMPLETED")));
+                .andExpect(jsonPath("$.finishReason", is("COMPLETED")))
+                .andExpect(jsonPath("$.output", containsString("Backend Developer")))
+                .andExpect(jsonPath("$.output", containsString("Example Ltd")));
 
         ArgumentCaptor<com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest>
                 payload = ArgumentCaptor.forClass(
