@@ -77,6 +77,27 @@ class LlmGatewayControllerIntegrationTest {
     }
 
     @Test
+    void admitsTheBoundedCvAndCoverLetterTaskUsedByTheDocumentWorkflow()
+            throws Exception {
+        GenerationRequest request = textRequest();
+        request.setTask("CV_COVER_LETTER_GENERATION");
+
+        mockMvc.perform(post("/api/v2/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.finishReason", is("COMPLETED")));
+
+        ArgumentCaptor<com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest>
+                payload = ArgumentCaptor.forClass(
+                        com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest.class);
+        verify(fixtureControllerApi).llm(payload.capture());
+        assertEquals(
+                "CV_COVER_LETTER_GENERATION",
+                payload.getValue().getOperation());
+    }
+
+    @Test
     void keepsDeprecatedV1EndpointWorkingDuringConsumerMigration() throws Exception {
         GenerateRequest request = new GenerateRequest();
         request.setTaskType("DOCUMENT_DRAFT");
