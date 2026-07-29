@@ -14,12 +14,8 @@ import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
 import com.jobseekercopilot.generated.systemdataservice.api.FixtureControllerApi;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmResponse;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,16 +68,23 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
         }
         try {
             JsonNode envelope = objectMapper.readTree(command.untrustedInput());
-            Map<String, String> evidence = StreamSupport.stream(
-                            envelope.path("approvedEvidence").path("records").spliterator(), false)
+            List<EvidenceValue> evidence = StreamSupport.stream(
+                            envelope.path("approvedEvidence")
+                                    .path("records")
+                                    .spliterator(),
+                            false)
                     .filter(JsonNode::isObject)
                     .filter(record -> record.path("evidenceId").isTextual())
                     .filter(record -> record.path("value").isTextual())
-                    .collect(Collectors.toMap(
-                            record -> record.path("evidenceId").textValue(),
-                            record -> record.path("value").textValue(),
-                            (first, ignored) -> first,
-                            LinkedHashMap::new));
+                    .map(record -> new EvidenceValue(
+                            record.path("evidenceId").textValue(),
+                            record.path("value").textValue(),
+                            record.path("source").asText("PROFILE"),
+                            record.path("purpose").asText("BOTH"),
+                            record.path("factType").isTextual()
+                                    ? record.path("factType").textValue()
+                                    : null))
+                    .toList();
             String jobTitle = requiredEvidence(evidence, "JOB.TITLE");
             String companyName = requiredEvidence(evidence, "JOB.COMPANY");
 
@@ -114,26 +117,32 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             ObjectNode output,
             ObjectNode cv,
             ObjectNode coverLetter,
-            Map<String, String> evidence,
+            List<EvidenceValue> evidence,
             String jobTitle
     ) {
         if (!(output.path("claims") instanceof ArrayNode claims)) {
             return;
         }
 
-        EvidenceValue profileEvidence = profileEvidence(evidence)
+        EvidenceValue cvEvidence = profileEvidence(evidence, "CV")
                 .orElseThrow(() -> new GenerationBoundaryException(
-                        "The CV and cover-letter fixture request has no supported profile evidence."));
+                        "The CV fixture request has no supported confirmed evidence."));
+        EvidenceValue coverLetterEvidence =
+                profileEvidence(evidence, "COVER_LETTER")
+                        .orElseThrow(() -> new GenerationBoundaryException(
+                                "The cover-letter fixture request has no supported confirmed evidence."));
 
         cv.put("personalSummary",
-                "Candidate profile includes " + profileEvidence.value()
+                "Candidate profile includes " + cvEvidence.value()
                         + " and is tailored to the " + jobTitle + " role.");
         if (coverLetter.path("bodyParagraphs") instanceof ArrayNode bodyParagraphs
                 && bodyParagraphs.size() >= 2) {
             bodyParagraphs.set(
                     0,
                     objectMapper.getNodeFactory().textNode(
-                            "My profile includes " + profileEvidence.value() + "."));
+                            "My profile includes "
+                                    + coverLetterEvidence.value()
+                                    + "."));
             bodyParagraphs.set(
                     1,
                     objectMapper.getNodeFactory().textNode(
@@ -143,38 +152,53 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                 "closingParagraph",
                 "Thank you for considering my application for the " + jobTitle + " role.");
 
-        setClaimEvidence(claims, "/cv/title", List.of(profileEvidence.id(), "JOB.TITLE"));
+        setClaimEvidence(claims, "/cv/title", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/cv/targetRole", List.of("JOB.TITLE"));
         setClaimEvidence(
                 claims,
                 "/cv/personalSummary",
-                List.of(profileEvidence.id(), "JOB.TITLE"));
+                List.of(cvEvidence.id(), "JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/title", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/jobTitle", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/companyName", List.of("JOB.COMPANY"));
         setClaimEvidence(
                 claims,
                 "/coverLetter/openingParagraph",
-                List.of("REQUEST.GENERATION_INTENT", "JOB.TITLE"));
+                List.of(
+                        coverLetterEvidence.id(),
+                        "REQUEST.GENERATION_INTENT",
+                        "JOB.TITLE"));
         setClaimEvidence(
                 claims,
                 "/coverLetter/bodyParagraphs/0",
-                List.of(profileEvidence.id()));
-        setClaimEvidence(claims, "/coverLetter/bodyParagraphs/1", List.of("JOB.TITLE"));
-        setClaimEvidence(claims, "/coverLetter/closingParagraph", List.of("JOB.TITLE"));
+                List.of(coverLetterEvidence.id()));
+        setClaimEvidence(
+                claims,
+                "/coverLetter/bodyParagraphs/1",
+                List.of(coverLetterEvidence.id(), "JOB.TITLE"));
+        setClaimEvidence(
+                claims,
+                "/coverLetter/closingParagraph",
+                List.of(coverLetterEvidence.id(), "JOB.TITLE"));
     }
 
-    private Optional<EvidenceValue> profileEvidence(Map<String, String> evidence) {
-        for (Predicate<String> supported : List.<Predicate<String>>of(
-                id -> id.startsWith("PROFILE.EMPLOYMENT.") && id.endsWith(".RESPONSIBILITIES"),
-                id -> id.startsWith("PROFILE.EMPLOYMENT.") && id.endsWith(".JOB_TITLE"),
-                id -> id.startsWith("PROFILE.SKILL."),
-                id -> id.startsWith("PROFILE.QUALIFICATION.") && id.endsWith(".NAME"),
-                id -> id.startsWith("PROFILE.TARGET_ROLE."),
-                id -> id.startsWith("PROFILE."))) {
-            Optional<EvidenceValue> match = evidence.entrySet().stream()
-                    .filter(entry -> supported.test(entry.getKey()))
-                    .map(entry -> new EvidenceValue(entry.getKey(), entry.getValue()))
+    private Optional<EvidenceValue> profileEvidence(
+            List<EvidenceValue> evidence,
+            String purpose) {
+        for (String factType : List.of(
+                "DESCRIPTION",
+                "RESPONSIBILITIES",
+                "RESPONSIBILITY",
+                "ACHIEVEMENTS",
+                "DEMONSTRATED_SKILL",
+                "ROLE_TITLE",
+                "QUALIFICATION_TITLE",
+                "LEGACY_PROFILE")) {
+            Optional<EvidenceValue> match = evidence.stream()
+                    .filter(item -> item.supports(purpose))
+                    .filter(item -> factType.equals(item.factType())
+                            || ("LEGACY_PROFILE".equals(factType)
+                                    && item.id().startsWith("PROFILE.")))
                     .findFirst();
             if (match.isPresent()) {
                 return match;
@@ -198,13 +222,16 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                 });
     }
 
-    private String requiredEvidence(Map<String, String> evidence, String evidenceId) {
-        String value = evidence.get(evidenceId);
-        if (value == null || value.isBlank()) {
-            throw new GenerationBoundaryException(
-                    "The CV and cover-letter fixture request is missing required job evidence.");
-        }
-        return value;
+    private String requiredEvidence(
+            List<EvidenceValue> evidence,
+            String evidenceId) {
+        return evidence.stream()
+                .filter(item -> evidenceId.equals(item.id()))
+                .map(EvidenceValue::value)
+                .filter(value -> !value.isBlank())
+                .findFirst()
+                .orElseThrow(() -> new GenerationBoundaryException(
+                        "The CV and cover-letter fixture request is missing required job evidence."));
     }
 
     private String text(String value, String fallback) {
@@ -215,6 +242,18 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
         return value == null ? 0L : value;
     }
 
-    private record EvidenceValue(String id, String value) {
+    private record EvidenceValue(
+            String id,
+            String value,
+            String source,
+            String purpose,
+            String factType) {
+
+        private boolean supports(String requestedPurpose) {
+            return ("EVIDENCE_SNAPSHOT".equals(source)
+                            && (requestedPurpose.equals(purpose)
+                                    || "BOTH".equals(purpose)))
+                    || id.startsWith("PROFILE.");
+        }
     }
 }
