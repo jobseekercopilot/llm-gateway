@@ -117,6 +117,54 @@ class FixtureLlmProviderClientTest {
     }
 
     @Test
+    void versionedFixtureKeepsStableFactsWithinTheirDocumentPurpose()
+            throws Exception {
+        when(fixtureControllerApi.llm(any()))
+                .thenReturn(response(fullDocumentFixture()));
+        String cvFact =
+                "aaaaaaaa-0000-4000-8000-000000000001";
+        String coverFact =
+                "bbbbbbbb-0000-4000-8000-000000000002";
+
+        JsonNode output = objectMapper.readTree(client.generate(command("""
+                {
+                  "approvedEvidence": {
+                    "records": [
+                      {"evidenceId":"REQUEST.GENERATION_INTENT",
+                       "value":"Generate application documents",
+                       "source":"REQUEST","purpose":"BOTH"},
+                      {"evidenceId":"%s","value":"Java",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "factType":"DEMONSTRATED_SKILL","category":"PROJECT"},
+                      {"evidenceId":"%s","value":"community mentoring",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"COVER_LETTER",
+                       "factType":"DESCRIPTION","category":"VOLUNTEERING"},
+                      {"evidenceId":"JOB.TITLE","value":"Java Developer",
+                       "source":"JOB","purpose":"BOTH"},
+                      {"evidenceId":"JOB.COMPANY","value":"Example Ltd",
+                       "source":"JOB","purpose":"BOTH"}
+                    ]
+                  }
+                }
+                """.formatted(cvFact, coverFact))).output());
+
+        assertTrue(output.at("/cv/personalSummary")
+                .asText().contains("Java"));
+        assertTrue(output.at("/coverLetter/bodyParagraphs/0")
+                .asText().contains("community mentoring"));
+        assertEquals(
+                cvFact,
+                output.at("/claims/2/evidenceIds/0").asText());
+        assertEquals(
+                coverFact,
+                output.at("/claims/7/evidenceIds/0").asText());
+        assertFalse(output.at("/claims/2/evidenceIds")
+                .toString().contains(coverFact));
+        assertFalse(output.at("/claims/7/evidenceIds")
+                .toString().contains(cvFact));
+    }
+
+    @Test
     void failsClosedWhenRequiredJobEvidenceIsMissing() {
         when(fixtureControllerApi.llm(any())).thenReturn(response(documentFixture()));
 
