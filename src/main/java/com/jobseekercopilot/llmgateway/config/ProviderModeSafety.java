@@ -156,22 +156,37 @@ public class ProviderModeSafety implements ApplicationRunner {
     }
 
     private void validateProviderIdentity() {
-        validateIdentifier("organization", openAiConfiguration.getOrganizationId(), "org-", "org_");
-        validateIdentifier("project", openAiConfiguration.getProjectId(), "proj_");
+        validateOptionalIdentifier(
+                "organization",
+                openAiConfiguration.getOrganizationId(),
+                "org-",
+                "org_"
+        );
+        validateOptionalIdentifier("project", openAiConfiguration.getProjectId(), "proj_");
     }
 
-    private void validateIdentifier(String name, String value, String... allowedPrefixes) {
-        if (!StringUtils.hasText(value)
-                || value.length() > 128
+    private void validateOptionalIdentifier(
+            String name,
+            String value,
+            String... allowedPrefixes
+    ) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        if (value.length() > 128
                 || value.chars().anyMatch(Character::isWhitespace)) {
-            throw new IllegalStateException("LIVE mode requires an explicit OpenAI " + name + " ID.");
+            throw new IllegalStateException(
+                    "LIVE mode requires a valid optional OpenAI " + name + " ID."
+            );
         }
         for (String prefix : allowedPrefixes) {
             if (value.startsWith(prefix)) {
                 return;
             }
         }
-        throw new IllegalStateException("LIVE mode requires a valid OpenAI " + name + " ID.");
+        throw new IllegalStateException(
+                "LIVE mode requires a valid optional OpenAI " + name + " ID."
+        );
     }
 
     private void validatePrivacyDecision() {

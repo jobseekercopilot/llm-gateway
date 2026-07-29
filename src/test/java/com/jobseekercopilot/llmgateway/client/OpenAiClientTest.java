@@ -29,6 +29,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.ExpectedCount.twice;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -112,6 +113,37 @@ class OpenAiClientTest {
         assertEquals("openai", result.adapterId());
         assertEquals("configured-model", result.modelId());
         assertEquals(20L, result.usage().totalTokens());
+    }
+
+    @Test
+    void adapterOmitsIdentityHeadersForProjectScopedCredentials() {
+        OpenAiConfiguration configuration = configuration();
+        configuration.setOrganizationId("");
+        configuration.setProjectId("");
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        server.expect(once(), requestTo(configuration.getEndpoint()))
+                .andExpect(headerDoesNotExist("OpenAI-Organization"))
+                .andExpect(headerDoesNotExist("OpenAI-Project"))
+                .andRespond(withSuccess("""
+                        {
+                          "model": "configured-model",
+                          "service_tier": "default",
+                          "choices": [{
+                            "finish_reason": "stop",
+                            "message": {"content": "generated output"}
+                          }],
+                          "usage": {
+                            "prompt_tokens": 12,
+                            "completion_tokens": 8,
+                            "total_tokens": 20
+                          }
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        new OpenAiClient(configuration, restTemplate).generate(textCommand());
+
+        server.verify();
     }
 
     @Test
