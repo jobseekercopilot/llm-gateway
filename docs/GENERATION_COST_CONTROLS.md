@@ -48,7 +48,7 @@ The default reviewed task policies are:
 | Task | Maximum conservative input estimate | Maximum requested output |
 | --- | ---: | ---: |
 | `DOCUMENT_DRAFT` | 60,000 tokens | 4,096 tokens |
-| `CV_COVER_LETTER_GENERATION` | 220,000 tokens | 4,096 tokens |
+| `CV_COVER_LETTER_GENERATION` | 220,000 tokens | 8,192 tokens |
 | `CV_GENERATION` | 60,000 tokens | 4,096 tokens |
 | `COVER_LETTER_GENERATION` | 60,000 tokens | 4,096 tokens |
 | `GENERAL_GENERATION` | 20,000 tokens | 2,048 tokens |
@@ -104,7 +104,7 @@ The safe FIXTURE defaults use `fixture-model`, zero rates and an explicit
 | `GENERATION_OUTPUT_RATE_MICRO_USD_PER_MILLION_TOKENS` | Positive reviewed output rate |
 | `GENERATION_INPUT_TOKEN_RESERVE` | Envelope reserve from 0 to 4,096 |
 | `<TASK>_MAX_ESTIMATED_INPUT_TOKENS` | Positive server-owned input ceiling |
-| `<TASK>_MAX_OUTPUT_TOKENS` | Server ceiling from 1 to 4,096 |
+| `<TASK>_MAX_OUTPUT_TOKENS` | Server ceiling from 1 to 8,192 |
 
 The durable deployment record must link the configured values to the reviewed
 model catalogue or applicable account price and name an owner. Changing a

@@ -42,7 +42,7 @@ jq -e '
     (.components.schemas.GenerationRequest.properties.untrustedInput.maxLength == 170000) and
     (.components.schemas.GenerationLimits.additionalProperties == false) and
     (.components.schemas.GenerationLimits.properties.maxOutputTokens.minimum == 1) and
-    (.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum == 4096) and
+    (.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum == 8192) and
     (.components.schemas.GenerationLimits.properties.temperature.minimum == 0) and
     (.components.schemas.GenerationLimits.properties.temperature.maximum == 1) and
     (.components.schemas.GenerationOutputContract.additionalProperties == false) and

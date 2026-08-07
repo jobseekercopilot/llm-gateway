@@ -24,7 +24,7 @@ generation-controls:
       max-output-tokens: ${DOCUMENT_DRAFT_MAX_OUTPUT_TOKENS:4096}
     CV_COVER_LETTER_GENERATION:
       max-estimated-input-tokens: ${CV_COVER_LETTER_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:220000}
-      max-output-tokens: ${CV_COVER_LETTER_GENERATION_MAX_OUTPUT_TOKENS:4096}
+      max-output-tokens: ${CV_COVER_LETTER_GENERATION_MAX_OUTPUT_TOKENS:8192}
     CV_GENERATION:
       max-estimated-input-tokens: ${CV_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:60000}
       max-output-tokens: ${CV_GENERATION_MAX_OUTPUT_TOKENS:4096}
