@@ -40,11 +40,11 @@ public class GenerationRequest {
     private String trustedInstructions;
 
     @NotBlank
-    @Size(max = 40_000)
+    @Size(max = 170_000)
     @Schema(
             requiredMode = Schema.RequiredMode.REQUIRED,
             description = "Untrusted source data. Provider adapters keep it separate from trusted instructions.",
-            maxLength = 40_000
+            maxLength = 170_000
     )
     private String untrustedInput;
 

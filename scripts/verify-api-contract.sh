@@ -39,7 +39,7 @@ jq -e '
     (.components.schemas.GenerationRequest.properties.contractVersion.enum == ["2.0"]) and
     (.components.schemas.GenerationRequest.properties.task.maxLength == 64) and
     (.components.schemas.GenerationRequest.properties.trustedInstructions.maxLength == 12000) and
-    (.components.schemas.GenerationRequest.properties.untrustedInput.maxLength == 40000) and
+    (.components.schemas.GenerationRequest.properties.untrustedInput.maxLength == 170000) and
     (.components.schemas.GenerationLimits.additionalProperties == false) and
     (.components.schemas.GenerationLimits.properties.maxOutputTokens.minimum == 1) and
     (.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum == 4096) and
