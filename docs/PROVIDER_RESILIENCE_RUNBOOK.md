@@ -14,8 +14,8 @@ uncoordinated retry loop.
 
 The live adapter enforces:
 
-- one caller-visible deadline, `OPENAI_CALL_TIMEOUT_MS` (default 60 seconds,
-  maximum 120 seconds);
+- one caller-visible deadline, `OPENAI_CALL_TIMEOUT_MS` (default and maximum
+  120 seconds, sized for admitted large CV evidence prompts);
 - a socket read deadline equal to the call deadline and a connect timeout that
   cannot exceed it;
 - a zero-queue bounded worker pool, `OPENAI_MAX_CONCURRENT_CALLS` (default 8,

@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProviderModeSafetyTest {
@@ -17,6 +18,11 @@ class ProviderModeSafetyTest {
     @Test
     void disabledIsTheSafeDefault() {
         assertDoesNotThrow(() -> safety(ExternalProviderMode.DISABLED, new MockEnvironment()).validate());
+    }
+
+    @Test
+    void defaultProviderDeadlineUsesTheBoundedMaximum() {
+        assertEquals(120_000, new OpenAiConfiguration().getCallTimeout());
     }
 
     @Test
