@@ -51,7 +51,7 @@ class GenerationControlSafetyTest {
     @Test
     void invalidTaskCeilingFailsStartup() {
         GenerationControlProperties controls = validControls();
-        controls.getTasks().get("DOCUMENT_DRAFT").setMaxOutputTokens(4097);
+        controls.getTasks().get("DOCUMENT_DRAFT").setMaxOutputTokens(8193);
 
         assertThrows(
                 IllegalStateException.class,
@@ -80,7 +80,7 @@ class GenerationControlSafetyTest {
         GenerationControlProperties.TaskLimit taskLimit =
                 new GenerationControlProperties.TaskLimit();
         taskLimit.setMaxEstimatedInputTokens(60_000);
-        taskLimit.setMaxOutputTokens(4096);
+        taskLimit.setMaxOutputTokens(8192);
         controls.setTasks(Map.of("DOCUMENT_DRAFT", taskLimit));
         return controls;
     }

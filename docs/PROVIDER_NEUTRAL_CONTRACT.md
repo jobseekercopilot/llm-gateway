@@ -62,7 +62,7 @@ Requests fail before adapter use when they exceed these limits:
 | Trusted instructions | 12,000 characters |
 | Untrusted input | 170,000 characters |
 | JSON Schema | 20,000 serialized characters |
-| Maximum output | 1–4,096 tokens |
+| Maximum output | 1–8,192 tokens |
 | Temperature | 0.0–1.0 |
 
 The character limits are followed by a server-owned task admission policy over
