@@ -20,7 +20,7 @@ import org.springframework.util.StringUtils;
         additionalProperties = Schema.AdditionalPropertiesValue.FALSE
 )
 public class GenerationOutputContract {
-    private static final int MAX_SCHEMA_CHARACTERS = 20_000;
+    private static final int MAX_SCHEMA_CHARACTERS = 64_000;
 
     @NotNull
     @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
@@ -41,7 +41,7 @@ public class GenerationOutputContract {
 
     @JsonIgnore
     @Schema(hidden = true)
-    @AssertTrue(message = "schemaId, schemaVersion and an object jsonSchema are required only for JSON_SCHEMA and the schema must not exceed 20000 characters")
+    @AssertTrue(message = "schemaId, schemaVersion and an object jsonSchema are required only for JSON_SCHEMA and the schema must not exceed 64000 characters")
     public boolean isSchemaConfigurationValid() {
         if (format == null) {
             return true;
