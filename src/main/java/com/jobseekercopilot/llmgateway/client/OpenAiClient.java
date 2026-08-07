@@ -130,8 +130,15 @@ public class OpenAiClient implements LlmProviderClient {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(openAiConfiguration.getApiKey());
-        headers.set(OPENAI_ORGANIZATION_HEADER, openAiConfiguration.getOrganizationId());
-        headers.set(OPENAI_PROJECT_HEADER, openAiConfiguration.getProjectId());
+        if (StringUtils.hasText(openAiConfiguration.getOrganizationId())) {
+            headers.set(
+                    OPENAI_ORGANIZATION_HEADER,
+                    openAiConfiguration.getOrganizationId()
+            );
+        }
+        if (StringUtils.hasText(openAiConfiguration.getProjectId())) {
+            headers.set(OPENAI_PROJECT_HEADER, openAiConfiguration.getProjectId());
+        }
         String correlationId = MDC.get(CorrelationIdFilter.MDC_KEY);
         if (StringUtils.hasText(correlationId)) {
             headers.set(CorrelationIdFilter.HEADER_NAME, correlationId);
@@ -283,6 +290,14 @@ public class OpenAiClient implements LlmProviderClient {
     private ProviderFailureException mapFailureResponse(ResponseEntity<byte[]> response) {
         HttpStatusCode status = response.getStatusCode();
         Long retryAfterSeconds = retryAfterSeconds(response);
+        ProviderErrorMetadata errorMetadata = providerErrorMetadata(response.getBody());
+        log.warn(
+                "OpenAI provider rejected request status={} errorType={} errorCode={} errorParam={}",
+                status.value(),
+                errorMetadata.type(),
+                errorMetadata.code(),
+                errorMetadata.param()
+        );
         if (status.value() == 401 || status.value() == 403) {
             return new ProviderFailureException(
                     ProviderFailureType.AUTHENTICATION,
@@ -319,6 +334,30 @@ public class OpenAiClient implements LlmProviderClient {
                 ProviderFailureType.REQUEST_REJECTED,
                 "The provider rejected the bounded request."
         );
+    }
+
+    private ProviderErrorMetadata providerErrorMetadata(byte[] responseBody) {
+        if (responseBody == null || responseBody.length == 0) {
+            return ProviderErrorMetadata.UNAVAILABLE;
+        }
+        try {
+            JsonNode error = objectMapper.readTree(responseBody).path("error");
+            return new ProviderErrorMetadata(
+                    safeProviderToken(error.path("type")),
+                    safeProviderToken(error.path("code")),
+                    safeProviderToken(error.path("param"))
+            );
+        } catch (IOException exception) {
+            return ProviderErrorMetadata.UNAVAILABLE;
+        }
+    }
+
+    private String safeProviderToken(JsonNode value) {
+        if (!value.isTextual()) {
+            return "unavailable";
+        }
+        String token = value.asText();
+        return token.matches("[A-Za-z0-9_.-]{1,80}") ? token : "unavailable";
     }
 
     private boolean isQuotaExhausted(byte[] responseBody) {
@@ -380,6 +419,11 @@ public class OpenAiClient implements LlmProviderClient {
             current = current.getCause();
         }
         return false;
+    }
+
+    private record ProviderErrorMetadata(String type, String code, String param) {
+        private static final ProviderErrorMetadata UNAVAILABLE =
+                new ProviderErrorMetadata("unavailable", "unavailable", "unavailable");
     }
 
     private GenerationUsage mapUsage(Map<?, ?> responseBody) {

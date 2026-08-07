@@ -59,6 +59,26 @@ class ProviderModeSafetyTest {
     }
 
     @Test
+    void liveAllowsProjectScopedCredentialsWithoutIdentityHeaders() {
+        OpenAiConfiguration configuration = validLiveConfiguration();
+        configuration.setOrganizationId("");
+        configuration.setProjectId("");
+
+        assertDoesNotThrow(() -> liveSafety(configuration).validate());
+    }
+
+    @Test
+    void liveRejectsMalformedOptionalIdentityHeaders() {
+        OpenAiConfiguration configuration = validLiveConfiguration();
+        configuration.setOrganizationId("not-an-organization-id");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> liveSafety(configuration).validate()
+        );
+    }
+
+    @Test
     void liveRejectsMissingOrStalePrivacyDecision() {
         OpenAiConfiguration missingDecision = validLiveConfiguration();
         missingDecision.setPrivacyDecisionId("");
