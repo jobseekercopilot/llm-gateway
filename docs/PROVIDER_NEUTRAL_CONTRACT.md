@@ -60,7 +60,7 @@ Requests fail before adapter use when they exceed these limits:
 | --- | ---: |
 | Task identifier | 64 characters |
 | Trusted instructions | 12,000 characters |
-| Untrusted input | 40,000 characters |
+| Untrusted input | 170,000 characters |
 | JSON Schema | 20,000 serialized characters |
 | Maximum output | 1–4,096 tokens |
 | Temperature | 0.0–1.0 |
@@ -68,7 +68,8 @@ Requests fail before adapter use when they exceed these limits:
 The character limits are followed by a server-owned task admission policy over
 the conservative UTF-8 input estimate (including the JSON Schema and envelope
 reserve) and requested output tokens. Unknown tasks fail closed. Default
-document tasks permit at most a 60,000-token conservative input estimate;
+document tasks permit at most a 60,000-token conservative input estimate,
+except the combined CV and cover-letter task, which permits 220,000;
 `GENERAL_GENERATION` permits 20,000. Full calculation and override governance
 are in [`GENERATION_COST_CONTROLS.md`](GENERATION_COST_CONTROLS.md).
 

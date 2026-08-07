@@ -88,9 +88,10 @@ class LlmGatewayControllerIntegrationTest {
                       {"evidenceId":"JOB.TITLE","value":"Backend Developer"},
                       {"evidenceId":"JOB.COMPANY","value":"Example Ltd"}
                     ]
-                  }
+                  },
+                  "padding":"%s"
                 }
-                """);
+                """.formatted("x".repeat(82_000)));
         when(fixtureControllerApi.llm(any())).thenReturn(new FixtureLlmResponse()
                 .provider("fixture")
                 .model("fixture-model")
