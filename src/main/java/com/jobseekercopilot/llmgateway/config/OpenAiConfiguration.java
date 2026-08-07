@@ -22,7 +22,7 @@ public class OpenAiConfiguration {
     private String privacyOwner;
     private String privacyReviewOn;
     private int connectTimeout = 10000;
-    private int callTimeout = 60000;
+    private int callTimeout = 120000;
     private int maxResponseBytes = 1048576;
     private int maxConcurrentCalls = 8;
     private int circuitFailureThreshold = 3;
