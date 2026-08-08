@@ -110,8 +110,8 @@ public class ProviderModeSafety implements ApplicationRunner {
             throw new IllegalStateException(
                     "LIVE mode requires positive timeouts and a connect timeout within the provider-call deadline.");
         }
-        if (openAiConfiguration.getCallTimeout() > 120_000) {
-            throw new IllegalStateException("LIVE mode caps the provider-call deadline at 120 seconds.");
+        if (openAiConfiguration.getCallTimeout() > 480_000) {
+            throw new IllegalStateException("LIVE mode caps the provider-call deadline at 480 seconds.");
         }
         if (openAiConfiguration.getMaxResponseBytes() < 1024
                 || openAiConfiguration.getMaxResponseBytes() > 2_097_152) {
