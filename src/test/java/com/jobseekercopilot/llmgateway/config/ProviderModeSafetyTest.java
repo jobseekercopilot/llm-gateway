@@ -22,7 +22,7 @@ class ProviderModeSafetyTest {
 
     @Test
     void defaultProviderDeadlineUsesTheBoundedMaximum() {
-        assertEquals(120_000, new OpenAiConfiguration().getCallTimeout());
+        assertEquals(480_000, new OpenAiConfiguration().getCallTimeout());
     }
 
     @Test
@@ -136,7 +136,7 @@ class ProviderModeSafetyTest {
     @Test
     void liveFailsClosedOnUnboundedResilienceConfiguration() {
         OpenAiConfiguration excessiveDeadline = validLiveConfiguration();
-        excessiveDeadline.setCallTimeout(120_001);
+        excessiveDeadline.setCallTimeout(480_001);
         assertThrows(IllegalStateException.class, () -> liveSafety(excessiveDeadline).validate());
 
         OpenAiConfiguration responseTooLarge = validLiveConfiguration();
