@@ -89,23 +89,47 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             String companyName = requiredEvidence(evidence, "JOB.COMPANY");
 
             JsonNode parsedResponse = objectMapper.readTree(response);
-            if (!(parsedResponse instanceof ObjectNode output)
-                    || !(output.path("cv") instanceof ObjectNode cv)
-                    || !(output.path("coverLetter") instanceof ObjectNode coverLetter)) {
+            if (!(parsedResponse instanceof ObjectNode output)) {
                 throw new GenerationBoundaryException(
                         "The CV and cover-letter fixture response has an invalid structure.");
             }
-            cv.put("title", "Tailored " + jobTitle + " CV");
-            cv.put("targetRole", jobTitle);
-            coverLetter.put("title", jobTitle + " Cover Letter");
-            coverLetter.put("jobTitle", jobTitle);
-            coverLetter.put("companyName", companyName);
-            coverLetter.put("openingParagraph", "I am applying for the " + jobTitle + " role.");
+            RequestedOutputs requestedOutputs = requestedOutputs(command.jsonSchema());
+            JsonNode cvNode = output.path("cv");
+            JsonNode coverLetterNode = output.path("coverLetter");
+            if ((requestedOutputs.cv() && !(cvNode instanceof ObjectNode))
+                    || (requestedOutputs.coverLetter()
+                            && !(coverLetterNode instanceof ObjectNode))) {
+                throw new GenerationBoundaryException(
+                        "The CV and cover-letter fixture response has an invalid structure.");
+            }
+            ObjectNode cv = requestedOutputs.cv() ? (ObjectNode) cvNode : null;
+            ObjectNode coverLetter = requestedOutputs.coverLetter()
+                    ? (ObjectNode) coverLetterNode
+                    : null;
+            projectSelectedOutputs(output, requestedOutputs);
+            if (cv != null) {
+                cv.put("title", "Tailored " + jobTitle + " CV");
+                cv.put("targetRole", jobTitle);
+            }
+            if (coverLetter != null) {
+                coverLetter.put("title", jobTitle + " Cover Letter");
+                coverLetter.put("jobTitle", jobTitle);
+                coverLetter.put("companyName", companyName);
+                coverLetter.put(
+                        "openingParagraph",
+                        "I am applying for the " + jobTitle + " role.");
+            }
             if (output.path("generationNotes") instanceof ObjectNode notes) {
                 notes.put("tailoringSummary",
                         "Fixture-generated documents tailored to the selected vacancy.");
             }
-            contextualiseEvidenceLedger(output, cv, coverLetter, evidence, jobTitle);
+            contextualiseEvidenceLedger(
+                    output,
+                    cv,
+                    coverLetter,
+                    evidence,
+                    jobTitle,
+                    command.jsonSchema());
             return objectMapper.writeValueAsString(output);
         } catch (JsonProcessingException exception) {
             throw new GenerationBoundaryException(
@@ -118,46 +142,130 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             ObjectNode cv,
             ObjectNode coverLetter,
             List<EvidenceValue> evidence,
-            String jobTitle
+            String jobTitle,
+            JsonNode schema
     ) {
         if (!(output.path("claims") instanceof ArrayNode claims)) {
             return;
         }
 
-        EvidenceValue cvEvidence = profileEvidence(evidence, "CV")
-                .orElseThrow(() -> new GenerationBoundaryException(
-                        "The CV fixture request has no supported confirmed evidence."));
-        EvidenceValue coverLetterEvidence =
-                profileEvidence(evidence, "COVER_LETTER")
+        if (cv != null) {
+            EvidenceValue cvEvidence = profileEvidence(evidence, "CV")
+                    .orElseThrow(() -> new GenerationBoundaryException(
+                            "The CV fixture request has no supported confirmed evidence."));
+            cv.put("personalSummary",
+                    "Candidate profile includes " + cvEvidence.value()
+                            + " and is tailored to the " + jobTitle + " role.");
+            if (schemaHasProperty(schema, "personalSummaryClaim")) {
+                ObjectNode personalSummaryClaim = output.putObject(
+                        "personalSummaryClaim");
+                personalSummaryClaim.put("claimId", "CLAIM-9003");
+                personalSummaryClaim.put("disposition", "REWORDED");
+                personalSummaryClaim.putArray("evidenceIds")
+                        .add(cvEvidence.id())
+                        .add("JOB.TITLE");
+                personalSummaryClaim.put(
+                        "contentPath",
+                        "/cv/personalSummary");
+                personalSummaryClaim.put("reviewText", "");
+            }
+            if (schema.at("/properties/cv/properties/projects").isObject()
+                    && cv.path("projects").isEmpty()) {
+                EvidenceValue titleEvidence = evidence.stream()
+                        .filter(item -> item.supports("CV"))
+                        .filter(item -> "HEADING".equals(item.factType()))
+                        .findFirst()
+                        .orElse(cvEvidence);
+                ObjectNode project = cv.putArray("projects").addObject();
+                project.put(
+                        "title",
+                        titleEvidence.value().substring(
+                                0,
+                                Math.min(160, titleEvidence.value().length())));
+                project.put("role", "");
+                project.put("context", "");
+                project.put("startDate", "");
+                project.put("endDate", "");
+                project.put("description", cvEvidence.value());
+                project.putArray("highlights");
+                addOrdinaryClaim(
+                        claims,
+                        "CLAIM-011",
+                        titleEvidence.id(),
+                        "/cv/projects/0/title");
+                addOrdinaryClaim(
+                        claims,
+                        "CLAIM-012",
+                        cvEvidence.id(),
+                        "/cv/projects/0/description");
+            }
+            setClaimEvidence(claims, "/cv/title", List.of("JOB.TITLE"));
+            setClaimEvidence(claims, "/cv/targetRole", List.of("JOB.TITLE"));
+            setClaimEvidence(
+                    claims,
+                    "/cv/personalSummary",
+                    List.of(cvEvidence.id(), "JOB.TITLE"));
+        }
+        if (coverLetter == null) {
+            return;
+        }
+        EvidenceValue coverLetterEvidence = profileEvidence(evidence, "COVER_LETTER")
                         .orElseThrow(() -> new GenerationBoundaryException(
                                 "The cover-letter fixture request has no supported confirmed evidence."));
-
-        cv.put("personalSummary",
-                "Candidate profile includes " + cvEvidence.value()
-                        + " and is tailored to the " + jobTitle + " role.");
-        if (coverLetter.path("bodyParagraphs") instanceof ArrayNode bodyParagraphs
+        if (schema.at(
+                "/properties/coverLetter/properties/bodyParagraphs/items/type")
+                .asText().equals("object")) {
+            ArrayNode bodyParagraphs = coverLetter.putArray("bodyParagraphs");
+            addSupportedParagraph(
+                    bodyParagraphs,
+                    "My profile includes " + coverLetterEvidence.value() + ".",
+                    coverLetterEvidence.id());
+            addSupportedParagraph(
+                    bodyParagraphs,
+                    "This experience is relevant to the " + jobTitle + " role.",
+                    coverLetterEvidence.id(),
+                    "JOB.TITLE");
+            addSupportedParagraph(
+                    bodyParagraphs,
+                    "I would apply this experience to the role.",
+                    coverLetterEvidence.id());
+            addSupportedParagraph(
+                    bodyParagraphs,
+                    "This background would support reliable delivery.",
+                    coverLetterEvidence.id());
+        } else if (coverLetter.path("bodyParagraphs") instanceof ArrayNode bodyParagraphs
                 && bodyParagraphs.size() >= 2) {
-            bodyParagraphs.set(
-                    0,
-                    objectMapper.getNodeFactory().textNode(
-                            "My profile includes "
-                                    + coverLetterEvidence.value()
-                                    + "."));
-            bodyParagraphs.set(
-                    1,
-                    objectMapper.getNodeFactory().textNode(
-                            "I have reviewed the requirements for the " + jobTitle + " role."));
+            bodyParagraphs.set(0, objectMapper.getNodeFactory().textNode(
+                    "My profile includes " + coverLetterEvidence.value() + "."));
+            bodyParagraphs.set(1, objectMapper.getNodeFactory().textNode(
+                    "I have reviewed the requirements for the " + jobTitle + " role."));
         }
-        coverLetter.put(
-                "closingParagraph",
-                "Thank you for considering my application for the " + jobTitle + " role.");
+        if (schemaHasProperty(schema, "canonicalApplicationClaims")) {
+            coverLetter.put("greeting", "Dear Hiring Manager");
+            coverLetter.put(
+                    "openingParagraph",
+                    "Please consider my application for this role.");
+            coverLetter.put(
+                    "closingParagraph",
+                    "Thank you for considering my application.");
+            ObjectNode canonicalClaims = output.putObject(
+                    "canonicalApplicationClaims");
+            addCanonicalApplicationClaim(
+                    canonicalClaims.putObject("opening"),
+                    "CLAIM-9001",
+                    "/coverLetter/openingParagraph");
+            addCanonicalApplicationClaim(
+                    canonicalClaims.putObject("closing"),
+                    "CLAIM-9002",
+                    "/coverLetter/closingParagraph");
+        } else {
+            coverLetter.put(
+                    "closingParagraph",
+                    "Thank you for considering my application for the "
+                            + jobTitle
+                            + " role.");
+        }
 
-        setClaimEvidence(claims, "/cv/title", List.of("JOB.TITLE"));
-        setClaimEvidence(claims, "/cv/targetRole", List.of("JOB.TITLE"));
-        setClaimEvidence(
-                claims,
-                "/cv/personalSummary",
-                List.of(cvEvidence.id(), "JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/title", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/jobTitle", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/companyName", List.of("JOB.COMPANY"));
@@ -180,6 +288,111 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                 claims,
                 "/coverLetter/closingParagraph",
                 List.of(coverLetterEvidence.id(), "JOB.TITLE"));
+    }
+
+    private void addSupportedParagraph(
+            ArrayNode paragraphs,
+            String text,
+            String... evidenceIds) {
+        ObjectNode paragraph = paragraphs.addObject();
+        paragraph.put("text", text);
+        paragraph.put("disposition", "REWORDED");
+        ArrayNode evidence = paragraph.putArray("evidenceIds");
+        for (String evidenceId : evidenceIds) {
+            evidence.add(evidenceId);
+        }
+    }
+
+    private void addOrdinaryClaim(
+            ArrayNode claims,
+            String claimId,
+            String evidenceId,
+            String contentPath) {
+        ObjectNode claim = claims.addObject();
+        claim.put("claimId", claimId);
+        claim.put("disposition", "REWORDED");
+        claim.putArray("evidenceIds").add(evidenceId);
+        claim.putArray("contentPaths").add(contentPath);
+        claim.put("reviewText", "");
+    }
+
+    private void addCanonicalApplicationClaim(
+            ObjectNode claim,
+            String claimId,
+            String contentPath) {
+        claim.put("claimId", claimId);
+        claim.put("disposition", "SUPPORTED");
+        claim.put(
+                "generationIntentEvidenceId",
+                "REQUEST.GENERATION_INTENT");
+        claim.put("jobTitleEvidenceId", "JOB.TITLE");
+        claim.put("companyEvidenceId", "JOB.COMPANY");
+        claim.put("contentPath", contentPath);
+        claim.put("reviewText", "");
+    }
+
+    private boolean schemaHasProperty(JsonNode schema, String property) {
+        return schema != null && schema.path("properties").has(property);
+    }
+
+    private RequestedOutputs requestedOutputs(JsonNode schema) {
+        JsonNode properties = schema == null ? null : schema.path("properties");
+        boolean cv = properties != null && properties.has("cv");
+        boolean coverLetter = properties != null && properties.has("coverLetter");
+        return cv || coverLetter
+                ? new RequestedOutputs(cv, coverLetter)
+                : new RequestedOutputs(true, true);
+    }
+
+    private void projectSelectedOutputs(
+            ObjectNode output,
+            RequestedOutputs requestedOutputs) {
+        if (!requestedOutputs.cv()) {
+            output.remove("cv");
+        }
+        if (!requestedOutputs.coverLetter()) {
+            output.remove("coverLetter");
+        }
+        if (!(output.path("claims") instanceof ArrayNode claims)) {
+            return;
+        }
+        for (int index = claims.size() - 1; index >= 0; index--) {
+            JsonNode claim = claims.get(index);
+            boolean targetsCv = claimTargets(claim, "/cv/");
+            boolean targetsCoverLetter = claimTargets(claim, "/coverLetter/");
+            if ((targetsCv && !requestedOutputs.cv())
+                    || (targetsCoverLetter && !requestedOutputs.coverLetter())
+                    || !allowedSelectedClaim(claim, requestedOutputs)) {
+                claims.remove(index);
+            }
+        }
+    }
+
+    private boolean allowedSelectedClaim(
+            JsonNode claim,
+            RequestedOutputs requestedOutputs) {
+        if (requestedOutputs.cv() && requestedOutputs.coverLetter()) {
+            return true;
+        }
+        return StreamSupport.stream(
+                        claim.path("contentPaths").spliterator(), false)
+                .filter(JsonNode::isTextual)
+                .map(JsonNode::textValue)
+                .allMatch(path -> requestedOutputs.cv()
+                        ? path.equals("/cv/targetRole")
+                                || path.startsWith("/cv/projects/")
+                                || path.startsWith("/cv/qualifications/")
+                                || path.startsWith("/cv/workHistory/")
+                        : path.equals("/coverLetter/title")
+                                || path.equals("/coverLetter/jobTitle")
+                                || path.equals("/coverLetter/companyName"));
+    }
+
+    private boolean claimTargets(JsonNode claim, String prefix) {
+        return StreamSupport.stream(
+                        claim.path("contentPaths").spliterator(), false)
+                .anyMatch(path -> path.isTextual()
+                        && path.textValue().startsWith(prefix));
     }
 
     private Optional<EvidenceValue> profileEvidence(
@@ -255,5 +468,8 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                                     || "BOTH".equals(purpose)))
                     || id.startsWith("PROFILE.");
         }
+    }
+
+    private record RequestedOutputs(boolean cv, boolean coverLetter) {
     }
 }
