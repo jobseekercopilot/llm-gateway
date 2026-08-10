@@ -136,6 +136,12 @@ class FixtureLlmProviderClientTest {
                       {"evidenceId":"%s","value":"Java",
                        "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
                        "factType":"DEMONSTRATED_SKILL","category":"PROJECT"},
+                      {"evidenceId":"cccccccc-0000-4000-8000-000000000003","value":"Application Delivery Platform",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "factType":"HEADING","category":"PROJECT"},
+                      {"evidenceId":"dddddddd-0000-4000-8000-000000000004","value":"Built a reliable Java delivery platform",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "factType":"DESCRIPTION","category":"PROJECT"},
                       {"evidenceId":"%s","value":"community mentoring",
                        "source":"EVIDENCE_SNAPSHOT","purpose":"COVER_LETTER",
                        "factType":"DESCRIPTION","category":"VOLUNTEERING"},
@@ -150,10 +156,16 @@ class FixtureLlmProviderClientTest {
 
         assertTrue(output.at("/cv/personalSummary")
                 .asText().contains("Java"));
+        assertEquals(
+                "Application Delivery Platform",
+                output.at("/cv/projects/0/title").asText());
+        assertEquals(
+                "dddddddd-0000-4000-8000-000000000004",
+                output.at("/claims/11/evidenceIds/0").asText());
         assertTrue(output.at("/coverLetter/bodyParagraphs/0")
                 .asText().contains("community mentoring"));
         assertEquals(
-                cvFact,
+                "dddddddd-0000-4000-8000-000000000004",
                 output.at("/claims/2/evidenceIds/0").asText());
         assertEquals(
                 coverFact,
@@ -162,6 +174,40 @@ class FixtureLlmProviderClientTest {
                 .toString().contains(coverFact));
         assertFalse(output.at("/claims/7/evidenceIds")
                 .toString().contains(cvFact));
+    }
+
+    @Test
+    void supportsOnePurposePerBoundedGenerationRequest() throws Exception {
+        when(fixtureControllerApi.llm(any()))
+                .thenReturn(response(fullDocumentFixture()));
+
+        JsonNode cvOutput = objectMapper.readTree(client.generate(command("""
+                {"approvedEvidence":{"records":[
+                  {"evidenceId":"aaaaaaaa-0000-4000-8000-000000000001",
+                   "value":"Selected project delivery","source":"EVIDENCE_SNAPSHOT",
+                   "purpose":"CV","factType":"DESCRIPTION","category":"PROJECT"},
+                  {"evidenceId":"bbbbbbbb-0000-4000-8000-000000000002",
+                   "value":"Delivery platform","source":"EVIDENCE_SNAPSHOT",
+                   "purpose":"CV","factType":"HEADING","category":"PROJECT"},
+                  {"evidenceId":"JOB.TITLE","value":"Java Developer","source":"JOB","purpose":"BOTH"},
+                  {"evidenceId":"JOB.COMPANY","value":"Example Ltd","source":"JOB","purpose":"BOTH"}
+                ]}}
+                """)).output());
+
+        assertEquals("Delivery platform", cvOutput.at("/cv/projects/0/title").asText());
+
+        JsonNode coverOutput = objectMapper.readTree(client.generate(command("""
+                {"approvedEvidence":{"records":[
+                  {"evidenceId":"cccccccc-0000-4000-8000-000000000003",
+                   "value":"Selected project delivery","source":"EVIDENCE_SNAPSHOT",
+                   "purpose":"COVER_LETTER","factType":"DESCRIPTION","category":"PROJECT"},
+                  {"evidenceId":"JOB.TITLE","value":"Java Developer","source":"JOB","purpose":"BOTH"},
+                  {"evidenceId":"JOB.COMPANY","value":"Example Ltd","source":"JOB","purpose":"BOTH"}
+                ]}}
+                """)).output());
+
+        assertTrue(coverOutput.at("/coverLetter/bodyParagraphs/0")
+                .asText().contains("Selected project delivery"));
     }
 
     @Test

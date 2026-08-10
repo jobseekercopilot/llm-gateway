@@ -81,6 +81,7 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                             record.path("value").textValue(),
                             record.path("source").asText("PROFILE"),
                             record.path("purpose").asText("BOTH"),
+                            record.path("category").asText(""),
                             record.path("factType").isTextual()
                                     ? record.path("factType").textValue()
                                     : null))
@@ -125,12 +126,16 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
         }
 
         EvidenceValue cvEvidence = profileEvidence(evidence, "CV")
+                .or(() -> profileEvidence(evidence, "COVER_LETTER"))
                 .orElseThrow(() -> new GenerationBoundaryException(
                         "The CV fixture request has no supported confirmed evidence."));
         EvidenceValue coverLetterEvidence =
                 profileEvidence(evidence, "COVER_LETTER")
+                        .or(() -> profileEvidence(evidence, "CV"))
                         .orElseThrow(() -> new GenerationBoundaryException(
                                 "The cover-letter fixture request has no supported confirmed evidence."));
+
+        contextualiseCvProject(cv, claims, evidence);
 
         cv.put("personalSummary",
                 "Candidate profile includes " + cvEvidence.value()
@@ -180,6 +185,77 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                 claims,
                 "/coverLetter/closingParagraph",
                 List.of(coverLetterEvidence.id(), "JOB.TITLE"));
+    }
+
+    private void contextualiseCvProject(
+            ObjectNode cv,
+            ArrayNode claims,
+            List<EvidenceValue> evidence
+    ) {
+        List<EvidenceValue> projectEvidence = evidence.stream()
+                .filter(item -> item.supports("CV"))
+                .filter(item -> "PROJECT".equals(item.category()))
+                .toList();
+        if (projectEvidence.isEmpty()) {
+            return;
+        }
+
+        EvidenceValue title = requiredFact(projectEvidence, "HEADING");
+        EvidenceValue role = optionalFact(projectEvidence, "PROJECT_ROLE").orElse(null);
+        EvidenceValue description = requiredFact(projectEvidence, "DESCRIPTION");
+        EvidenceValue startDate = optionalFact(projectEvidence, "START_DATE").orElse(null);
+        EvidenceValue endDate = optionalFact(projectEvidence, "END_DATE").orElse(null);
+
+        ArrayNode projects = cv.putArray("projects");
+        ObjectNode project = projects.addObject();
+        project.put("title", title.value());
+        project.put("role", role == null ? "" : role.value());
+        project.put("context", "");
+        project.put("startDate", startDate == null ? "" : startDate.value());
+        project.put("endDate", endDate == null ? "" : endDate.value());
+        project.put("description", description.value());
+        project.putArray("highlights");
+
+        appendClaim(claims, "CLAIM-101", "/cv/projects/0/title", title.id());
+        if (role != null) appendClaim(claims, "CLAIM-102", "/cv/projects/0/role", role.id());
+        if (startDate != null) appendClaim(
+                claims, "CLAIM-103", "/cv/projects/0/startDate", startDate.id());
+        if (endDate != null) appendClaim(
+                claims, "CLAIM-104", "/cv/projects/0/endDate", endDate.id());
+        appendClaim(
+                claims, "CLAIM-105", "/cv/projects/0/description", description.id());
+    }
+
+    private EvidenceValue requiredFact(
+            List<EvidenceValue> evidence,
+            String factType
+    ) {
+        return optionalFact(evidence, factType)
+                .orElseThrow(() -> new GenerationBoundaryException(
+                        "The selected project fixture is missing " + factType + "."));
+    }
+
+    private Optional<EvidenceValue> optionalFact(
+            List<EvidenceValue> evidence,
+            String factType
+    ) {
+        return evidence.stream()
+                .filter(item -> factType.equals(item.factType()))
+                .findFirst();
+    }
+
+    private void appendClaim(
+            ArrayNode claims,
+            String claimId,
+            String contentPath,
+            String evidenceId
+    ) {
+        ObjectNode claim = claims.addObject();
+        claim.put("claimId", claimId);
+        claim.put("disposition", "SUPPORTED");
+        claim.putArray("evidenceIds").add(evidenceId);
+        claim.putArray("contentPaths").add(contentPath);
+        claim.put("reviewText", "");
     }
 
     private Optional<EvidenceValue> profileEvidence(
@@ -247,6 +323,7 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             String value,
             String source,
             String purpose,
+            String category,
             String factType) {
 
         private boolean supports(String requestedPurpose) {
