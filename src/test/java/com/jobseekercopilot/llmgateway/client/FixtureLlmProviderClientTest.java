@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jobseekercopilot.generated.systemdataservice.api.FixtureControllerApi;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmResponse;
 import com.jobseekercopilot.llmgateway.config.FixtureProperties;
@@ -165,6 +166,79 @@ class FixtureLlmProviderClientTest {
     }
 
     @Test
+    void projectsCvOnlyFixtureUsingCvEvidence() throws Exception {
+        when(fixtureControllerApi.llm(any()))
+                .thenReturn(response(fullDocumentFixture()));
+
+        JsonNode output = objectMapper.readTree(client.generate(selectedCommand("""
+                {
+                  "approvedEvidence": {
+                    "records": [
+                      {"evidenceId":"REQUEST.GENERATION_INTENT",
+                       "value":"Generate an application CV","source":"REQUEST","purpose":"BOTH"},
+                      {"evidenceId":"aaaaaaaa-0000-4000-8000-000000000001",
+                       "value":"Delivered accessible Java services",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV","factType":"DESCRIPTION"},
+                      {"evidenceId":"JOB.TITLE","value":"Java Developer","purpose":"BOTH"},
+                      {"evidenceId":"JOB.COMPANY","value":"Example Ltd","purpose":"BOTH"}
+                    ]
+                  }
+                }
+                """, "cv")).output());
+
+        assertTrue(output.has("cv"));
+        assertFalse(output.has("coverLetter"));
+        assertTrue(output.at("/cv/personalSummary").asText()
+                .contains("Delivered accessible Java services"));
+        assertEquals(
+                "CLAIM-9003",
+                output.at("/personalSummaryClaim/claimId").asText());
+        assertTrue(output.at("/personalSummaryClaim/evidenceIds")
+                .toString().contains(
+                        "aaaaaaaa-0000-4000-8000-000000000001"));
+        assertClaimsTarget(output, "/cv/");
+        assertEquals(
+                "/cv/targetRole",
+                output.at("/claims/0/contentPaths/0").asText());
+    }
+
+    @Test
+    void projectsCoverLetterOnlyFixtureUsingCoverLetterEvidence() throws Exception {
+        when(fixtureControllerApi.llm(any()))
+                .thenReturn(response(fullDocumentFixture()));
+
+        JsonNode output = objectMapper.readTree(client.generate(selectedCommand("""
+                {
+                  "approvedEvidence": {
+                    "records": [
+                      {"evidenceId":"REQUEST.GENERATION_INTENT",
+                       "value":"Generate an application cover letter","source":"REQUEST","purpose":"BOTH"},
+                      {"evidenceId":"bbbbbbbb-0000-4000-8000-000000000002",
+                       "value":"Built secure integration workflows",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"COVER_LETTER","factType":"DESCRIPTION"},
+                      {"evidenceId":"JOB.TITLE","value":"Java Developer","purpose":"BOTH"},
+                      {"evidenceId":"JOB.COMPANY","value":"Example Ltd","purpose":"BOTH"}
+                    ]
+                  }
+                }
+                """, "coverLetter")).output());
+
+        assertFalse(output.has("cv"));
+        assertTrue(output.has("coverLetter"));
+        assertTrue(output.at("/coverLetter/bodyParagraphs/0/text").asText()
+                .contains("Built secure integration workflows"));
+        assertEquals(
+                "CLAIM-9001",
+                output.at("/canonicalApplicationClaims/opening/claimId")
+                        .asText());
+        assertEquals(
+                "Please consider my application for this role.",
+                output.at("/coverLetter/openingParagraph").asText());
+        assertEquals(4, output.at("/coverLetter/bodyParagraphs").size());
+        assertClaimsTarget(output, "/coverLetter/");
+    }
+
+    @Test
     void failsClosedWhenRequiredJobEvidenceIsMissing() {
         when(fixtureControllerApi.llm(any())).thenReturn(response(documentFixture()));
 
@@ -200,6 +274,35 @@ class FixtureLlmProviderClientTest {
                 "cv-cover-letter",
                 "1.0",
                 objectMapper.createObjectNode(),
+                4000,
+                0.0);
+    }
+
+    private GenerationCommand selectedCommand(
+            String untrustedInput,
+            String outputProperty) {
+        ObjectNode properties = objectMapper.createObjectNode();
+        ObjectNode selectedOutput = properties.putObject(outputProperty);
+        if ("cv".equals(outputProperty)) {
+            selectedOutput.putObject("properties").putObject("projects");
+            properties.putObject("personalSummaryClaim");
+        } else {
+            selectedOutput.putObject("properties")
+                    .putObject("bodyParagraphs")
+                    .putObject("items")
+                    .put("type", "object");
+            properties.putObject("canonicalApplicationClaims");
+        }
+        JsonNode schema = objectMapper.createObjectNode()
+                .set("properties", properties);
+        return new GenerationCommand(
+                "CV_COVER_LETTER_GENERATION",
+                "trusted",
+                untrustedInput,
+                GenerationOutputFormat.JSON_SCHEMA,
+                "cv-cover-letter",
+                "1.0",
+                schema,
                 4000,
                 0.0);
     }
@@ -253,6 +356,15 @@ class FixtureLlmProviderClientTest {
             }
         }
         assertFalse(observedEvidence.isEmpty());
+    }
+
+    private void assertClaimsTarget(JsonNode output, String prefix) {
+        assertFalse(output.path("claims").isEmpty());
+        for (JsonNode claim : output.path("claims")) {
+            for (JsonNode contentPath : claim.path("contentPaths")) {
+                assertTrue(contentPath.asText().startsWith(prefix));
+            }
+        }
     }
 
     private FixtureProperties properties() {
