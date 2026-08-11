@@ -10,6 +10,8 @@ import com.jobseekercopilot.llmgateway.dto.GenerationRequest;
 import com.jobseekercopilot.llmgateway.dto.GenerationResponse;
 import com.jobseekercopilot.llmgateway.dto.LlmUsage;
 import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
+import com.jobseekercopilot.llmgateway.exception.ProviderFailureException;
+import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -90,7 +92,7 @@ public class LlmGatewayService {
                 command.maxOutputTokens(),
                 admission.estimatedInputTokens());
 
-        ProviderGenerationResult result = llmProviderClient.generate(command);
+        ProviderGenerationResult result = generateWithSafeRetry(command);
         if (result == null || !StringUtils.hasText(result.output())) {
             throw new GenerationBoundaryException("The provider returned no generated output.");
         }
@@ -110,7 +112,7 @@ public class LlmGatewayService {
         generationControls.validateActualUsage(command, result, admission);
         var audit = generationControls.audit(result, admission);
 
-        log.info("generation request completed adapter={} model={} modelDeploymentVersion={} pricingVersion={} estimatedCostMicroUsd={} task={} finishReason={} inputTokens={} outputTokens={} totalTokens={} durationMs={}",
+        log.info("generation request completed adapter={} model={} modelDeploymentVersion={} pricingVersion={} estimatedCostMicroUsd={} task={} finishReason={} providerAttemptCount={} automaticRetryCount={} retryReason={} inputTokens={} outputTokens={} totalTokens={} durationMs={}",
                 result.adapterId(),
                 result.modelId(),
                 audit.modelDeploymentVersion(),
@@ -118,10 +120,75 @@ public class LlmGatewayService {
                 audit.estimatedCostMicroUsd(),
                 command.task(),
                 result.finishReason(),
+                result.providerAttemptCount(),
+                result.automaticRetryCount(),
+                result.retryReason(),
                 result.usage().inputTokens(),
                 result.usage().outputTokens(),
                 result.usage().totalTokens(),
                 (System.nanoTime() - startedAt) / 1_000_000);
         return result;
+    }
+
+    private ProviderGenerationResult generateWithSafeRetry(
+            GenerationCommand command) {
+        int retries = 0;
+        String retryReason = null;
+        while (true) {
+            int attempt = retries + 1;
+            try {
+                ProviderGenerationResult result =
+                        llmProviderClient.generate(command);
+                return result == null
+                        ? null
+                        : result.withAttemptAudit(
+                                attempt, retries, retryReason);
+            } catch (ProviderFailureException failure) {
+                if (!safeToRetry(failure)
+                        || retries
+                                >= generationControls
+                                        .maxAutomaticProviderRetries()) {
+                    log.warn(
+                            "provider generation failed providerAttempt={} automaticRetryCount={} failureType={} retrySafe={}",
+                            attempt,
+                            retries,
+                            failure.getType(),
+                            safeToRetry(failure));
+                    throw failure;
+                }
+                retries++;
+                retryReason = failure.getType().name();
+                log.warn(
+                        "provider generation retry scheduled providerAttempt={} automaticRetryCount={} retryReason={} previousProviderOutcome=DEFINITELY_NOT_GENERATED",
+                        attempt + 1,
+                        retries,
+                        retryReason);
+                waitBeforeRetry();
+            }
+        }
+    }
+
+    private boolean safeToRetry(ProviderFailureException failure) {
+        // A provider rate-limit response is an explicit refusal before any
+        // generation. Transport timeouts, resets and 5xx responses remain
+        // ambiguous and must never be retried here.
+        return failure.getType() == ProviderFailureType.RATE_LIMITED;
+    }
+
+    private void waitBeforeRetry() {
+        long delay = generationControls.providerRetryDelayMillis();
+        if (delay <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new ProviderFailureException(
+                    ProviderFailureType.CANCELLED,
+                    "The bounded provider retry was cancelled.",
+                    null,
+                    interrupted);
+        }
     }
 }

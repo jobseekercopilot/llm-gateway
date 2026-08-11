@@ -47,6 +47,16 @@ public class GenerationControlSafety implements ApplicationRunner {
             throw new IllegalStateException(
                     "generation-controls.input-token-reserve must be between 0 and 4096.");
         }
+        if (controls.getMaxAutomaticProviderRetries() < 0
+                || controls.getMaxAutomaticProviderRetries() > 1) {
+            throw new IllegalStateException(
+                    "Automatic provider retries must be bounded between 0 and 1.");
+        }
+        if (controls.getProviderRetryDelayMillis() < 0
+                || controls.getProviderRetryDelayMillis() > 5000) {
+            throw new IllegalStateException(
+                    "Provider retry delay must be between 0 and 5000 milliseconds.");
+        }
         validateRate("input", controls.getInputRateMicroUsdPerMillionTokens());
         validateRate("output", controls.getOutputRateMicroUsdPerMillionTokens());
 

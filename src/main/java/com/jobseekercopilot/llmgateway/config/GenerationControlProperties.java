@@ -17,6 +17,8 @@ public class GenerationControlProperties {
     private long inputRateMicroUsdPerMillionTokens;
     private long outputRateMicroUsdPerMillionTokens;
     private int inputTokenReserve;
+    private int maxAutomaticProviderRetries = 1;
+    private long providerRetryDelayMillis = 1000;
     private Map<String, TaskLimit> tasks = new LinkedHashMap<>();
 
     @Data

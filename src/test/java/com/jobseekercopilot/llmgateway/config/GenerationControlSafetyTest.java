@@ -59,6 +59,18 @@ class GenerationControlSafetyTest {
         );
     }
 
+    @Test
+    void rejectsMoreThanOneAutomaticProviderRetry() {
+        GenerationControlProperties controls = validControls();
+        controls.setMaxAutomaticProviderRetries(2);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> safety(
+                        ExternalProviderMode.FIXTURE,
+                        controls).validate());
+    }
+
     private GenerationControlSafety safety(
             ExternalProviderMode mode,
             GenerationControlProperties controls

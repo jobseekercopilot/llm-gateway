@@ -11,6 +11,8 @@ fixture:
   scenario: ${FIXTURE_SCENARIO:happy-path}
 
 generation-controls:
+  max-automatic-provider-retries: ${GENERATION_MAX_AUTOMATIC_PROVIDER_RETRIES:1}
+  provider-retry-delay-millis: ${GENERATION_PROVIDER_RETRY_DELAY_MILLIS:1000}
   admission-policy-version: ${GENERATION_ADMISSION_POLICY_VERSION:document-generation-admission-2026-07}
   model-id: ${GENERATION_MODEL_ID:fixture-model}
   model-deployment-version: ${GENERATION_MODEL_DEPLOYMENT_VERSION:fixture-model-deployment-1}
