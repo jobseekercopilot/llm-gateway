@@ -14,6 +14,7 @@ import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
 import com.jobseekercopilot.generated.systemdataservice.api.FixtureControllerApi;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest;
 import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmResponse;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.StreamSupport;
@@ -101,17 +102,75 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             coverLetter.put("title", jobTitle + " Cover Letter");
             coverLetter.put("jobTitle", jobTitle);
             coverLetter.put("companyName", companyName);
-            coverLetter.put("openingParagraph", "I am applying for the " + jobTitle + " role.");
+            coverLetter.put("openingParagraph", "Please consider my application for this role.");
             if (output.path("generationNotes") instanceof ObjectNode notes) {
                 notes.put("tailoringSummary",
                         "Fixture-generated documents tailored to the selected vacancy.");
             }
             contextualiseEvidenceLedger(output, cv, coverLetter, evidence, jobTitle);
+            retainRequestedSchemaFields(command, output);
             return objectMapper.writeValueAsString(output);
         } catch (JsonProcessingException exception) {
             throw new GenerationBoundaryException(
                     "The CV and cover-letter fixture payload could not be processed.");
         }
+    }
+
+    private void retainRequestedSchemaFields(
+            GenerationCommand command,
+            ObjectNode output
+    ) {
+        if (command.jsonSchema() == null
+                || !(command.jsonSchema().path("properties") instanceof ObjectNode properties)
+                || properties.isEmpty()) {
+            return;
+        }
+        List<String> allowedFields = new ArrayList<>();
+        properties.fieldNames().forEachRemaining(allowedFields::add);
+        retainPurposeClaims(
+                output,
+                properties.has("cv"),
+                properties.has("coverLetter"),
+                properties.at(
+                                "/claims/items/properties/contentPaths/items/pattern")
+                        .asText());
+        output.retain(allowedFields);
+    }
+
+    private void retainPurposeClaims(
+            ObjectNode output,
+            boolean includesCv,
+            boolean includesCoverLetter,
+            String claimPathPattern
+    ) {
+        if (includesCv == includesCoverLetter
+                || !(output.path("claims") instanceof ArrayNode claims)) {
+            return;
+        }
+        String requiredPrefix = includesCv ? "/cv/" : "/coverLetter/";
+        ArrayNode purposeClaims = objectMapper.createArrayNode();
+        StreamSupport.stream(claims.spliterator(), false)
+                .filter(claim -> claim.path("contentPaths").isArray())
+                .filter(claim -> claim.path("contentPaths").size() > 0)
+                .filter(claim -> StreamSupport.stream(
+                                claim.path("contentPaths").spliterator(), false)
+                        .allMatch(path -> path.isTextual()
+                                && path.textValue().startsWith(requiredPrefix)))
+                .forEach(purposeClaims::add);
+        if (includesCoverLetter
+                && "/coverLetter/title".matches(claimPathPattern)
+                && StreamSupport.stream(purposeClaims.spliterator(), false)
+                        .noneMatch(claim -> StreamSupport.stream(
+                                        claim.path("contentPaths").spliterator(), false)
+                                .anyMatch(path -> "/coverLetter/title".equals(
+                                        path.asText())))) {
+            appendClaim(
+                    purposeClaims,
+                    "CLAIM-004",
+                    "/coverLetter/title",
+                    "JOB.TITLE");
+        }
+        output.set("claims", purposeClaims);
     }
 
     private void contextualiseEvidenceLedger(
@@ -141,50 +200,56 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                 "Candidate profile includes " + cvEvidence.value()
                         + " and is tailored to the " + jobTitle + " role.");
         if (coverLetter.path("bodyParagraphs") instanceof ArrayNode bodyParagraphs
-                && bodyParagraphs.size() >= 2) {
-            bodyParagraphs.set(
-                    0,
-                    objectMapper.getNodeFactory().textNode(
-                            "My profile includes "
-                                    + coverLetterEvidence.value()
-                                    + "."));
-            bodyParagraphs.set(
-                    1,
-                    objectMapper.getNodeFactory().textNode(
-                            "I have reviewed the requirements for the " + jobTitle + " role."));
+                && bodyParagraphs.size() >= 4) {
+            setBodyParagraph(bodyParagraphs, 0,
+                    "My profile includes " + coverLetterEvidence.value() + ".",
+                    List.of(coverLetterEvidence.id()));
+            setBodyParagraph(bodyParagraphs, 1,
+                    "That confirmed experience is relevant to the " + jobTitle + " role.",
+                    List.of(coverLetterEvidence.id(), "JOB.TITLE"));
+            setBodyParagraph(bodyParagraphs, 2,
+                    "I would bring that confirmed experience to the role.",
+                    List.of(coverLetterEvidence.id()));
+            setBodyParagraph(bodyParagraphs, 3,
+                    "I welcome the opportunity to discuss how that experience supports the "
+                            + jobTitle + " role.",
+                    List.of(coverLetterEvidence.id(), "JOB.TITLE"));
+        } else {
+            throw new GenerationBoundaryException(
+                    "The cover-letter fixture requires four structured body paragraphs.");
         }
         coverLetter.put(
                 "closingParagraph",
-                "Thank you for considering my application for the " + jobTitle + " role.");
+                "Thank you for considering my application.");
 
-        setClaimEvidence(claims, "/cv/title", List.of("JOB.TITLE"));
+        if (output.path("personalSummaryClaim") instanceof ObjectNode personalSummaryClaim) {
+            ArrayNode evidenceIds = personalSummaryClaim.putArray("evidenceIds");
+            evidenceIds.add(cvEvidence.id());
+            evidenceIds.add("JOB.TITLE");
+        } else {
+            throw new GenerationBoundaryException(
+                    "The CV fixture requires a dedicated personal-summary claim.");
+        }
+
         setClaimEvidence(claims, "/cv/targetRole", List.of("JOB.TITLE"));
-        setClaimEvidence(
-                claims,
-                "/cv/personalSummary",
-                List.of(cvEvidence.id(), "JOB.TITLE"));
-        setClaimEvidence(claims, "/coverLetter/title", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/jobTitle", List.of("JOB.TITLE"));
         setClaimEvidence(claims, "/coverLetter/companyName", List.of("JOB.COMPANY"));
-        setClaimEvidence(
-                claims,
-                "/coverLetter/openingParagraph",
-                List.of(
-                        coverLetterEvidence.id(),
-                        "REQUEST.GENERATION_INTENT",
-                        "JOB.TITLE"));
-        setClaimEvidence(
-                claims,
-                "/coverLetter/bodyParagraphs/0",
-                List.of(coverLetterEvidence.id()));
-        setClaimEvidence(
-                claims,
-                "/coverLetter/bodyParagraphs/1",
-                List.of(coverLetterEvidence.id(), "JOB.TITLE"));
-        setClaimEvidence(
-                claims,
-                "/coverLetter/closingParagraph",
-                List.of(coverLetterEvidence.id(), "JOB.TITLE"));
+    }
+
+    private void setBodyParagraph(
+            ArrayNode paragraphs,
+            int index,
+            String text,
+            List<String> evidenceIds
+    ) {
+        if (!(paragraphs.get(index) instanceof ObjectNode paragraph)) {
+            throw new GenerationBoundaryException(
+                    "The cover-letter fixture body paragraph has an invalid structure.");
+        }
+        paragraph.put("text", text);
+        paragraph.put("disposition", "REWORDED");
+        ArrayNode approvedEvidence = paragraph.putArray("evidenceIds");
+        evidenceIds.forEach(approvedEvidence::add);
     }
 
     private void contextualiseCvProject(

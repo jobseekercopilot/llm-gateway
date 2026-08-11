@@ -47,7 +47,7 @@ class FixtureLlmProviderClientTest {
         assertEquals("Backend Developer", output.at("/coverLetter/jobTitle").textValue());
         assertEquals("Example Recruitment Ltd", output.at("/coverLetter/companyName").textValue());
         assertEquals(
-                "I am applying for the Backend Developer role.",
+                "Please consider my application for this role.",
                 output.at("/coverLetter/openingParagraph").textValue());
     }
 
@@ -60,10 +60,10 @@ class FixtureLlmProviderClientTest {
 
         assertEquals(
                 "My profile includes Delivered reliable customer-facing services.",
-                output.at("/coverLetter/bodyParagraphs/0").textValue());
+                output.at("/coverLetter/bodyParagraphs/0/text").textValue());
         assertEquals(
                 "PROFILE.EMPLOYMENT.1.RESPONSIBILITIES",
-                output.at("/claims/7/evidenceIds/0").textValue());
+                output.at("/coverLetter/bodyParagraphs/0/evidenceIds/0").textValue());
     }
 
     @Test
@@ -74,7 +74,7 @@ class FixtureLlmProviderClientTest {
 
         assertEquals(
                 "My profile includes Java.",
-                output.at("/coverLetter/bodyParagraphs/0").textValue());
+                output.at("/coverLetter/bodyParagraphs/0/text").textValue());
         assertFalse(output.toString().contains("PROFILE.EMPLOYMENT."));
     }
 
@@ -86,7 +86,8 @@ class FixtureLlmProviderClientTest {
                 """);
 
         assertTrue(output.at("/cv/personalSummary").textValue().contains("Spring Boot"));
-        assertEquals("PROFILE.SKILL.1", output.at("/claims/2/evidenceIds/0").textValue());
+        assertEquals("PROFILE.SKILL.1",
+                output.at("/personalSummaryClaim/evidenceIds/0").textValue());
         assertFalse(output.toString().contains("PROFILE.EMPLOYMENT."));
     }
 
@@ -159,20 +160,18 @@ class FixtureLlmProviderClientTest {
         assertEquals(
                 "Application Delivery Platform",
                 output.at("/cv/projects/0/title").asText());
-        assertEquals(
-                "dddddddd-0000-4000-8000-000000000004",
-                output.at("/claims/11/evidenceIds/0").asText());
         assertTrue(output.at("/coverLetter/bodyParagraphs/0")
-                .asText().contains("community mentoring"));
+                .path("text").asText().contains("community mentoring"));
         assertEquals(
                 "dddddddd-0000-4000-8000-000000000004",
-                output.at("/claims/2/evidenceIds/0").asText());
+                claimFor(output, "/cv/projects/0/description")
+                        .at("/evidenceIds/0").asText());
         assertEquals(
                 coverFact,
-                output.at("/claims/7/evidenceIds/0").asText());
-        assertFalse(output.at("/claims/2/evidenceIds")
+                output.at("/coverLetter/bodyParagraphs/0/evidenceIds/0").asText());
+        assertFalse(claimFor(output, "/cv/projects/0/description").path("evidenceIds")
                 .toString().contains(coverFact));
-        assertFalse(output.at("/claims/7/evidenceIds")
+        assertFalse(output.at("/coverLetter/bodyParagraphs/0/evidenceIds")
                 .toString().contains(cvFact));
     }
 
@@ -207,7 +206,78 @@ class FixtureLlmProviderClientTest {
                 """)).output());
 
         assertTrue(coverOutput.at("/coverLetter/bodyParagraphs/0")
-                .asText().contains("Selected project delivery"));
+                .path("text").asText().contains("Selected project delivery"));
+    }
+
+    @Test
+    void projectsCombinedFixtureIntoTheRequestedPurposeSchema() throws Exception {
+        when(fixtureControllerApi.llm(any()))
+                .thenReturn(response(fullDocumentFixture()));
+        var schema = objectMapper.createObjectNode();
+        var properties = schema.putObject("properties");
+        properties.putObject("cv");
+        properties.putObject("generationNotes");
+        properties.putObject("personalSummaryClaim");
+        properties.putObject("claims");
+
+        GenerationCommand cvCommand = new GenerationCommand(
+                "CV_COVER_LETTER_GENERATION",
+                "trusted",
+                """
+                {"approvedEvidence":{"records":[
+                  {"evidenceId":"PROFILE.SKILL.1","value":"Java"},
+                  {"evidenceId":"JOB.TITLE","value":"Java Developer"},
+                  {"evidenceId":"JOB.COMPANY","value":"Example Ltd"}
+                ]}}
+                """,
+                GenerationOutputFormat.JSON_SCHEMA,
+                "cv-cover-letter",
+                "4.0.0",
+                schema,
+                4000,
+                0.0);
+
+        JsonNode output = objectMapper.readTree(client.generate(cvCommand).output());
+
+        assertTrue(output.has("cv"));
+        assertTrue(output.has("personalSummaryClaim"));
+        assertFalse(output.has("coverLetter"));
+        assertFalse(output.has("canonicalApplicationClaims"));
+        assertThatEveryClaimUsesPrefix(output, "/cv/");
+
+        var coverSchema = objectMapper.createObjectNode();
+        var coverProperties = coverSchema.putObject("properties");
+        coverProperties.putObject("coverLetter");
+        coverProperties.putObject("generationNotes");
+        coverProperties.putObject("canonicalApplicationClaims");
+        coverProperties.putObject("claims")
+                .putObject("items")
+                .putObject("properties")
+                .putObject("contentPaths")
+                .putObject("items")
+                .put("pattern", "^/coverLetter/(?:title|jobTitle|companyName)$");
+        GenerationCommand coverCommand = new GenerationCommand(
+                cvCommand.task(),
+                cvCommand.trustedInstructions(),
+                cvCommand.untrustedInput(),
+                cvCommand.outputFormat(),
+                cvCommand.schemaId(),
+                cvCommand.schemaVersion(),
+                coverSchema,
+                cvCommand.maxOutputTokens(),
+                cvCommand.temperature());
+
+        JsonNode coverOutput = objectMapper.readTree(
+                client.generate(coverCommand).output());
+
+        assertTrue(coverOutput.has("coverLetter"));
+        assertTrue(coverOutput.has("canonicalApplicationClaims"));
+        assertFalse(coverOutput.has("cv"));
+        assertFalse(coverOutput.has("personalSummaryClaim"));
+        assertEquals("JOB.TITLE",
+                claimFor(coverOutput, "/coverLetter/title")
+                        .at("/evidenceIds/0").asText());
+        assertThatEveryClaimUsesPrefix(coverOutput, "/coverLetter/");
     }
 
     @Test
@@ -301,6 +371,26 @@ class FixtureLlmProviderClientTest {
         assertFalse(observedEvidence.isEmpty());
     }
 
+    private JsonNode claimFor(JsonNode output, String contentPath) {
+        for (JsonNode claim : output.path("claims")) {
+            for (JsonNode path : claim.path("contentPaths")) {
+                if (contentPath.equals(path.asText())) {
+                    return claim;
+                }
+            }
+        }
+        throw new AssertionError("Missing claim for " + contentPath);
+    }
+
+    private void assertThatEveryClaimUsesPrefix(JsonNode output, String prefix) {
+        assertFalse(output.path("claims").isEmpty());
+        for (JsonNode claim : output.path("claims")) {
+            for (JsonNode path : claim.path("contentPaths")) {
+                assertTrue(path.asText().startsWith(prefix), path.asText());
+            }
+        }
+    }
+
     private FixtureProperties properties() {
         FixtureProperties properties = new FixtureProperties();
         properties.setDatasetId("uk-software-developer-demo");
@@ -332,6 +422,7 @@ class FixtureLlmProviderClientTest {
                     "targetRole":"Old role",
                     "personalSummary":"Old summary",
                     "coreSkills":[],
+                    "projects":[],
                     "qualifications":[],
                     "workHistory":[]
                   },
@@ -340,45 +431,41 @@ class FixtureLlmProviderClientTest {
                     "jobTitle":"Old role",
                     "companyName":"Old company",
                     "greeting":"Dear Hiring Manager,",
-                    "openingParagraph":"Old opening",
-                    "bodyParagraphs":["Old profile claim","Old job claim"],
-                    "closingParagraph":"Old closing",
+                    "openingParagraph":"Please consider my application for this role.",
+                    "bodyParagraphs":[
+                      {"text":"Old profile claim","disposition":"REWORDED","evidenceIds":["PROFILE.SKILL.1"]},
+                      {"text":"Old job claim","disposition":"REWORDED","evidenceIds":["PROFILE.SKILL.1","JOB.TITLE"]},
+                      {"text":"Old evidence claim","disposition":"REWORDED","evidenceIds":["PROFILE.SKILL.1"]},
+                      {"text":"Old closing claim","disposition":"REWORDED","evidenceIds":["PROFILE.SKILL.1","JOB.TITLE"]}
+                    ],
+                    "closingParagraph":"Thank you for considering my application.",
                     "signOff":"Yours sincerely"
                   },
-                  "generationNotes":{"tailoringSummary":"Old summary"},
+                  "generationNotes":{"assumptionsMade":[],"missingInformation":[],"tailoringSummary":"Old summary"},
                   "claims":[
-                    {"claimId":"CLAIM-001","disposition":"REWORDED",
-                     "evidenceIds":["PROFILE.SKILL.1","JOB.TITLE"],
-                     "contentPaths":["/cv/title"],"reviewText":""},
-                    {"claimId":"CLAIM-002","disposition":"SUPPORTED",
+                    {"claimId":"CLAIM-001","disposition":"SUPPORTED",
                      "evidenceIds":["JOB.TITLE"],
                      "contentPaths":["/cv/targetRole"],"reviewText":""},
-                    {"claimId":"CLAIM-003","disposition":"REWORDED",
-                     "evidenceIds":["PROFILE.SKILL.1","JOB.DESCRIPTION"],
-                     "contentPaths":["/cv/personalSummary"],"reviewText":""},
-                    {"claimId":"CLAIM-004","disposition":"REWORDED",
-                     "evidenceIds":["JOB.TITLE"],
-                     "contentPaths":["/coverLetter/title"],"reviewText":""},
-                    {"claimId":"CLAIM-005","disposition":"SUPPORTED",
+                    {"claimId":"CLAIM-002","disposition":"SUPPORTED",
                      "evidenceIds":["JOB.TITLE"],
                      "contentPaths":["/coverLetter/jobTitle"],"reviewText":""},
-                    {"claimId":"CLAIM-006","disposition":"SUPPORTED",
+                    {"claimId":"CLAIM-003","disposition":"SUPPORTED",
                      "evidenceIds":["JOB.COMPANY"],
-                     "contentPaths":["/coverLetter/companyName"],"reviewText":""},
-                    {"claimId":"CLAIM-007","disposition":"REWORDED",
-                     "evidenceIds":["REQUEST.GENERATION_INTENT","JOB.TITLE"],
-                     "contentPaths":["/coverLetter/openingParagraph"],"reviewText":""},
-                    {"claimId":"CLAIM-008","disposition":"REWORDED",
-                     "evidenceIds":["PROFILE.SKILL.1",
-                                    "PROFILE.EMPLOYMENT.1.RESPONSIBILITIES"],
-                     "contentPaths":["/coverLetter/bodyParagraphs/0"],"reviewText":""},
-                    {"claimId":"CLAIM-009","disposition":"REWORDED",
-                     "evidenceIds":["JOB.DESCRIPTION"],
-                     "contentPaths":["/coverLetter/bodyParagraphs/1"],"reviewText":""},
-                    {"claimId":"CLAIM-010","disposition":"SUPPORTED",
-                     "evidenceIds":["JOB.DESCRIPTION"],
-                     "contentPaths":["/coverLetter/closingParagraph"],"reviewText":""}
-                  ]
+                     "contentPaths":["/coverLetter/companyName"],"reviewText":""}
+                  ],
+                  "canonicalApplicationClaims":{
+                    "opening":{"claimId":"CLAIM-9001","disposition":"SUPPORTED",
+                      "generationIntentEvidenceId":"REQUEST.GENERATION_INTENT",
+                      "jobTitleEvidenceId":"JOB.TITLE","companyEvidenceId":"JOB.COMPANY",
+                      "contentPath":"/coverLetter/openingParagraph","reviewText":""},
+                    "closing":{"claimId":"CLAIM-9002","disposition":"SUPPORTED",
+                      "generationIntentEvidenceId":"REQUEST.GENERATION_INTENT",
+                      "jobTitleEvidenceId":"JOB.TITLE","companyEvidenceId":"JOB.COMPANY",
+                      "contentPath":"/coverLetter/closingParagraph","reviewText":""}
+                  },
+                  "personalSummaryClaim":{"claimId":"CLAIM-9003","disposition":"REWORDED",
+                    "evidenceIds":["PROFILE.SKILL.1","JOB.TITLE"],
+                    "contentPath":"/cv/personalSummary","reviewText":""}
                 }
                 """;
     }
