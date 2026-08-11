@@ -430,9 +430,11 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             RequestedOutputs requestedOutputs) {
         if (!requestedOutputs.cv()) {
             output.remove("cv");
+            output.remove("personalSummaryClaim");
         }
         if (!requestedOutputs.coverLetter()) {
             output.remove("coverLetter");
+            output.remove("canonicalApplicationClaims");
         }
         if (!(output.path("claims") instanceof ArrayNode claims)) {
             return;

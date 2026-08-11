@@ -188,6 +188,7 @@ class FixtureLlmProviderClientTest {
 
         assertTrue(output.has("cv"));
         assertFalse(output.has("coverLetter"));
+        assertFalse(output.has("canonicalApplicationClaims"));
         assertTrue(output.at("/cv/personalSummary").asText()
                 .contains("Delivered accessible Java services"));
         assertEquals(
@@ -264,6 +265,7 @@ class FixtureLlmProviderClientTest {
 
         assertFalse(output.has("cv"));
         assertTrue(output.has("coverLetter"));
+        assertFalse(output.has("personalSummaryClaim"));
         assertTrue(output.at("/coverLetter/bodyParagraphs/0/text").asText()
                 .contains("Built secure integration workflows"));
         assertEquals(
@@ -483,7 +485,15 @@ class FixtureLlmProviderClientTest {
                     {"claimId":"CLAIM-010","disposition":"SUPPORTED",
                      "evidenceIds":["JOB.DESCRIPTION"],
                      "contentPaths":["/coverLetter/closingParagraph"],"reviewText":""}
-                  ]
+                  ],
+                  "canonicalApplicationClaims": {
+                    "opening": {"claimId":"CLAIM-9001"},
+                    "closing": {"claimId":"CLAIM-9002"}
+                  },
+                  "personalSummaryClaim": {
+                    "claimId":"CLAIM-9003",
+                    "evidenceIds":["PROFILE.SKILL.1"]
+                  }
                 }
                 """;
     }
