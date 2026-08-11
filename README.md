@@ -13,10 +13,12 @@ The provider-neutral external-model boundary for Job Seeker Copilot. API
 text or strict JSON Schema output contracts, enforces request/response bounds
 and supports fail-closed disabled, live and deterministic fixture modes.
 
-The service is still **not beta-ready** until durable idempotency and trusted
-per-user quota/credit controls, provider account/privacy approval and all
-approved consumers are completed. Automatic provider retries remain disabled
-until those controls make every attempt replay-safe and budgeted. See
+The typed provider boundary is implemented and has been exercised through the
+controlled manual generation path with bounded live OpenAI calls. Durable
+operation identity, wallet reservations and consumer recovery make the approved
+document path replay-safe; automatic retries remain bounded to explicitly safe
+failure categories. This is not a provider reliability or production account
+approval claim. See
 [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md) and
 [`docs/PROVIDER_NEUTRAL_CONTRACT.md`](docs/PROVIDER_NEUTRAL_CONTRACT.md).
 The dated provider evidence and operator checklist are in
