@@ -203,6 +203,45 @@ class FixtureLlmProviderClientTest {
     }
 
     @Test
+    void projectsStructuredProjectEvidenceWithoutLosingRoleOrDates() throws Exception {
+        when(fixtureControllerApi.llm(any()))
+                .thenReturn(response(fullDocumentFixture()));
+
+        JsonNode output = objectMapper.readTree(client.generate(selectedCommand("""
+                {
+                  "approvedEvidence": {
+                    "records": [
+                      {"evidenceId":"PROJECT.HEADING","value":"Delivery platform",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "category":"PROJECT","factType":"HEADING"},
+                      {"evidenceId":"PROJECT.ROLE","value":"Lead developer",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "category":"PROJECT","factType":"PROJECT_ROLE"},
+                      {"evidenceId":"PROJECT.DESCRIPTION","value":"Built secure workflows",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "category":"PROJECT","factType":"DESCRIPTION"},
+                      {"evidenceId":"PROJECT.START","value":"2024-01-01",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "category":"PROJECT","factType":"START_DATE"},
+                      {"evidenceId":"PROJECT.END","value":"2025-06-30",
+                       "source":"EVIDENCE_SNAPSHOT","purpose":"CV",
+                       "category":"PROJECT","factType":"END_DATE"},
+                      {"evidenceId":"JOB.TITLE","value":"Java Developer","purpose":"BOTH"},
+                      {"evidenceId":"JOB.COMPANY","value":"Example Ltd","purpose":"BOTH"}
+                    ]
+                  }
+                }
+                """, "cv")).output());
+
+        assertEquals("Delivery platform", output.at("/cv/projects/0/title").asText());
+        assertEquals("Lead developer", output.at("/cv/projects/0/role").asText());
+        assertEquals("Built secure workflows", output.at("/cv/projects/0/description").asText());
+        assertEquals("2024-01-01", output.at("/cv/projects/0/startDate").asText());
+        assertEquals("2025-06-30", output.at("/cv/projects/0/endDate").asText());
+        assertTrue(output.path("claims").toString().contains("PROJECT.ROLE"));
+    }
+
+    @Test
     void projectsCoverLetterOnlyFixtureUsingCoverLetterEvidence() throws Exception {
         when(fixtureControllerApi.llm(any()))
                 .thenReturn(response(fullDocumentFixture()));
