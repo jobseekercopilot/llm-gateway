@@ -64,8 +64,19 @@ public class GenerationControls {
                         result.usage().inputTokens(),
                         result.usage().outputTokens()
                 ),
-                CURRENCY
+                CURRENCY,
+                result.providerAttemptCount(),
+                result.automaticRetryCount(),
+                result.retryReason()
         );
+    }
+
+    int maxAutomaticProviderRetries() {
+        return controls.getMaxAutomaticProviderRetries();
+    }
+
+    long providerRetryDelayMillis() {
+        return controls.getProviderRetryDelayMillis();
     }
 
     private long estimateInputTokens(GenerationCommand command) {

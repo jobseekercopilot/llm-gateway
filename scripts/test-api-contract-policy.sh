@@ -23,7 +23,7 @@ if "$repository_root/scripts/verify-api-contract.sh" "$temporary_dir/v2-operatio
 fi
 
 copy_contract "$temporary_dir/token-bound"
-jq '.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum = 10000' \
+jq '.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum = 40000' \
     "$temporary_dir/token-bound/openapi.json" > "$temporary_dir/token-bound/changed.json"
 mv "$temporary_dir/token-bound/changed.json" "$temporary_dir/token-bound/openapi.json"
 if "$repository_root/scripts/verify-api-contract.sh" "$temporary_dir/token-bound/openapi.json" >/dev/null 2>&1; then

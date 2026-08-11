@@ -16,6 +16,8 @@ import com.jobseekercopilot.llmgateway.dto.GenerationResponse;
 import com.jobseekercopilot.llmgateway.dto.GenerationUsage;
 import com.jobseekercopilot.llmgateway.exception.GenerationBoundaryException;
 import com.jobseekercopilot.llmgateway.exception.GenerationLimitException;
+import com.jobseekercopilot.llmgateway.exception.ProviderFailureException;
+import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -139,6 +142,38 @@ class LlmGatewayServiceTest {
         assertThrows(GenerationBoundaryException.class, () -> service.generate(textRequest()));
     }
 
+    @Test
+    void retriesOneExplicitRateLimitThenReturnsAttemptAudit() {
+        when(providerClient.generate(any()))
+                .thenThrow(new ProviderFailureException(
+                        ProviderFailureType.RATE_LIMITED,
+                        "Provider refused before generation.",
+                        0L))
+                .thenReturn(result("openai", "test-model"));
+
+        GenerationResponse response = service.generate(textRequest());
+
+        verify(providerClient, times(2)).generate(any());
+        assertEquals(2, response.audit().providerAttemptCount());
+        assertEquals(1, response.audit().automaticRetryCount());
+        assertEquals("RATE_LIMITED", response.audit().retryReason());
+    }
+
+    @Test
+    void neverRetriesAmbiguousProviderTransportFailure() {
+        when(providerClient.generate(any()))
+                .thenThrow(new ProviderFailureException(
+                        ProviderFailureType.UNAVAILABLE,
+                        "Provider transport failed.",
+                        null));
+
+        assertThrows(
+                ProviderFailureException.class,
+                () -> service.generate(textRequest()));
+
+        verify(providerClient, times(1)).generate(any());
+    }
+
     private GenerationRequest jsonSchemaRequest() throws Exception {
         return new GenerationRequest(
                 "2.0",
@@ -187,6 +222,7 @@ class LlmGatewayServiceTest {
         controls.setInputRateMicroUsdPerMillionTokens(2_500_000);
         controls.setOutputRateMicroUsdPerMillionTokens(10_000_000);
         controls.setInputTokenReserve(256);
+        controls.setProviderRetryDelayMillis(0);
         GenerationControlProperties.TaskLimit taskLimit =
                 new GenerationControlProperties.TaskLimit();
         taskLimit.setMaxEstimatedInputTokens(60_000);

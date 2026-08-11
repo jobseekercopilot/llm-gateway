@@ -42,7 +42,7 @@ jq -e '
     (.components.schemas.GenerationRequest.properties.untrustedInput.maxLength == 170000) and
     (.components.schemas.GenerationLimits.additionalProperties == false) and
     (.components.schemas.GenerationLimits.properties.maxOutputTokens.minimum == 1) and
-    (.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum == 8192) and
+    (.components.schemas.GenerationLimits.properties.maxOutputTokens.maximum == 32768) and
     (.components.schemas.GenerationLimits.properties.temperature.minimum == 0) and
     (.components.schemas.GenerationLimits.properties.temperature.maximum == 1) and
     (.components.schemas.GenerationOutputContract.additionalProperties == false) and
@@ -57,13 +57,15 @@ jq -e '
     (.components.schemas.GenerationResponse.required | index("audit") != null) and
     (.components.schemas.GenerationAudit.additionalProperties == false) and
     ((.components.schemas.GenerationAudit.properties | keys)
-        == ["admissionPolicyVersion", "currency", "estimatedCostMicroUsd",
-            "estimatedInputTokensAtAdmission", "modelDeploymentVersion",
-            "modelId", "pricingVersion"]) and
+        == ["admissionPolicyVersion", "automaticRetryCount", "currency",
+            "estimatedCostMicroUsd", "estimatedInputTokensAtAdmission",
+            "modelDeploymentVersion", "modelId", "pricingVersion",
+            "providerAttemptCount", "retryReason"]) and
     ((.components.schemas.GenerationAudit.required | sort)
-        == ["admissionPolicyVersion", "currency", "estimatedCostMicroUsd",
-            "estimatedInputTokensAtAdmission", "modelDeploymentVersion",
-            "modelId", "pricingVersion"]) and
+        == ["admissionPolicyVersion", "automaticRetryCount", "currency",
+            "estimatedCostMicroUsd", "estimatedInputTokensAtAdmission",
+            "modelDeploymentVersion", "modelId", "pricingVersion",
+            "providerAttemptCount"]) and
     (.components.schemas.GenerationAudit.properties | has("provider") | not) and
     (.components.schemas.ErrorResponse.additionalProperties == false) and
     (.components.schemas.GenerateRequest.properties.prompt.maxLength == 40000) and

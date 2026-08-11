@@ -10,7 +10,9 @@ import org.springframework.util.StringUtils;
 @Component
 public class GenerationControlSafety implements ApplicationRunner {
     static final long MAX_RATE_MICRO_USD_PER_MILLION_TOKENS = 1_000_000_000_000L;
-    private static final int PROVIDER_MAX_OUTPUT_TOKENS = 8192;
+    // The reviewed pinned GPT-4.1 mini deployment supports up to 32,768
+    // output tokens. Individual task policies remain lower by default.
+    private static final int PROVIDER_MAX_OUTPUT_TOKENS = 32_768;
     private static final int MAX_INPUT_TOKEN_RESERVE = 4096;
     private static final Pattern VERSION_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{2,127}");
     private static final Pattern TASK_PATTERN = Pattern.compile("[A-Z][A-Z0-9_]{1,63}");
@@ -45,6 +47,16 @@ public class GenerationControlSafety implements ApplicationRunner {
             throw new IllegalStateException(
                     "generation-controls.input-token-reserve must be between 0 and 4096.");
         }
+        if (controls.getMaxAutomaticProviderRetries() < 0
+                || controls.getMaxAutomaticProviderRetries() > 1) {
+            throw new IllegalStateException(
+                    "Automatic provider retries must be bounded between 0 and 1.");
+        }
+        if (controls.getProviderRetryDelayMillis() < 0
+                || controls.getProviderRetryDelayMillis() > 5000) {
+            throw new IllegalStateException(
+                    "Provider retry delay must be between 0 and 5000 milliseconds.");
+        }
         validateRate("input", controls.getInputRateMicroUsdPerMillionTokens());
         validateRate("output", controls.getOutputRateMicroUsdPerMillionTokens());
 
@@ -65,7 +77,7 @@ public class GenerationControlSafety implements ApplicationRunner {
             if (limit.getMaxOutputTokens() < 1
                     || limit.getMaxOutputTokens() > PROVIDER_MAX_OUTPUT_TOKENS) {
                 throw new IllegalStateException(
-                        "Every generation task requires an output-token ceiling between 1 and 8192.");
+                        "Every generation task requires an output-token ceiling between 1 and 32768.");
             }
         }
 

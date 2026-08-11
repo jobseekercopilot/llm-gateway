@@ -51,12 +51,24 @@ class GenerationControlSafetyTest {
     @Test
     void invalidTaskCeilingFailsStartup() {
         GenerationControlProperties controls = validControls();
-        controls.getTasks().get("DOCUMENT_DRAFT").setMaxOutputTokens(8193);
+        controls.getTasks().get("DOCUMENT_DRAFT").setMaxOutputTokens(32769);
 
         assertThrows(
                 IllegalStateException.class,
                 () -> safety(ExternalProviderMode.FIXTURE, controls).validate()
         );
+    }
+
+    @Test
+    void rejectsMoreThanOneAutomaticProviderRetry() {
+        GenerationControlProperties controls = validControls();
+        controls.setMaxAutomaticProviderRetries(2);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> safety(
+                        ExternalProviderMode.FIXTURE,
+                        controls).validate());
     }
 
     private GenerationControlSafety safety(
@@ -80,7 +92,7 @@ class GenerationControlSafetyTest {
         GenerationControlProperties.TaskLimit taskLimit =
                 new GenerationControlProperties.TaskLimit();
         taskLimit.setMaxEstimatedInputTokens(60_000);
-        taskLimit.setMaxOutputTokens(8192);
+        taskLimit.setMaxOutputTokens(32768);
         controls.setTasks(Map.of("DOCUMENT_DRAFT", taskLimit));
         return controls;
     }

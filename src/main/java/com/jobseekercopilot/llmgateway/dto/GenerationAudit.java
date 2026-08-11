@@ -28,6 +28,12 @@ public record GenerationAudit(
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "41400")
         long estimatedCostMicroUsd,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "USD")
-        String currency
+        String currency,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "2")
+        int providerAttemptCount,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "1")
+        int automaticRetryCount,
+        @Schema(example = "RATE_LIMITED")
+        String retryReason
 ) {
 }

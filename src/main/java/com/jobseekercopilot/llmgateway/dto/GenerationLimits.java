@@ -21,8 +21,8 @@ public class GenerationLimits {
 
     @NotNull
     @Min(value = 1, message = "maxOutputTokens must be at least 1")
-    @Max(value = 8192, message = "maxOutputTokens must not exceed 8192")
-    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, minimum = "1", maximum = "8192", example = "3000")
+    @Max(value = 32768, message = "maxOutputTokens must not exceed 32768")
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, minimum = "1", maximum = "32768", example = "3000")
     private Integer maxOutputTokens;
 
     @NotNull
