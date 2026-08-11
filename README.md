@@ -1,5 +1,13 @@
 # LLM Gateway
 
+## Role in Job Seeker Copilot
+
+| Role | Called by | Calls | Data | Local port |
+|---|---|---|---|---:|
+| Provider boundary for typed model generation, usage and audit evidence | CV and Cover Letter Service | OpenAI in live mode or System Data fixtures | None | 8090 |
+
+See the central [document journey](https://docs.jobseekercopilot.com/journeys/documents/), [provider integrations](https://docs.jobseekercopilot.com/services/provider-integrations/), and [configuration reference](https://docs.jobseekercopilot.com/operations/configuration/).
+
 The provider-neutral external-model boundary for Job Seeker Copilot. API
 `2.0.0` separates trusted instructions from untrusted input, accepts explicit
 text or strict JSON Schema output contracts, enforces request/response bounds
