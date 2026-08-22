@@ -130,6 +130,7 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                     coverLetter,
                     evidence,
                     jobTitle,
+                    companyName,
                     command.jsonSchema());
             return objectMapper.writeValueAsString(output);
         } catch (JsonProcessingException exception) {
@@ -144,6 +145,7 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             ObjectNode coverLetter,
             List<EvidenceValue> evidence,
             String jobTitle,
+            String companyName,
             JsonNode schema
     ) {
         if (!(output.path("claims") instanceof ArrayNode claims)) {
@@ -155,8 +157,8 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
                     .orElseThrow(() -> new GenerationBoundaryException(
                             "The CV fixture request has no supported confirmed evidence."));
             cv.put("personalSummary",
-                    "Candidate profile includes " + cvEvidence.value()
-                            + " and is tailored to the " + jobTitle + " role.");
+                    "Evidence-backed professional targeting " + jobTitle
+                            + " opportunities. " + cvEvidence.value());
             if (schemaHasProperty(schema, "personalSummaryClaim")) {
                 ObjectNode personalSummaryClaim = output.putObject(
                         "personalSummaryClaim");
@@ -201,25 +203,29 @@ public class FixtureLlmProviderClient implements LlmProviderClient {
             ArrayNode bodyParagraphs = coverLetter.putArray("bodyParagraphs");
             addSupportedParagraph(
                     bodyParagraphs,
-                    "My profile includes " + coverLetterEvidence.value() + ".",
+                    "My evidence-backed experience includes: "
+                            + coverLetterEvidence.value(),
                     coverLetterEvidence.id());
             addSupportedParagraph(
                     bodyParagraphs,
-                    "This experience is relevant to the " + jobTitle + " role.",
+                    "This experience is directly relevant to the priorities of the "
+                            + jobTitle + " role.",
                     coverLetterEvidence.id(),
                     "JOB.TITLE");
             addSupportedParagraph(
                     bodyParagraphs,
-                    "I would apply this experience to the role.",
-                    coverLetterEvidence.id());
+                    "I would bring this proven approach to " + companyName + ".",
+                    coverLetterEvidence.id(),
+                    "JOB.COMPANY");
             addSupportedParagraph(
                     bodyParagraphs,
-                    "This background would support reliable delivery.",
+                    "I welcome the opportunity to discuss how this background could contribute to your team.",
                     coverLetterEvidence.id());
         } else if (coverLetter.path("bodyParagraphs") instanceof ArrayNode bodyParagraphs
                 && bodyParagraphs.size() >= 2) {
             bodyParagraphs.set(0, objectMapper.getNodeFactory().textNode(
-                    "My profile includes " + coverLetterEvidence.value() + "."));
+                    "My evidence-backed experience includes: "
+                            + coverLetterEvidence.value()));
             bodyParagraphs.set(1, objectMapper.getNodeFactory().textNode(
                     "I have reviewed the requirements for the " + jobTitle + " role."));
         }

@@ -60,7 +60,7 @@ class FixtureLlmProviderClientTest {
                 """);
 
         assertEquals(
-                "My profile includes Delivered reliable customer-facing services.",
+                "My evidence-backed experience includes: Delivered reliable customer-facing services",
                 output.at("/coverLetter/bodyParagraphs/0").textValue());
         assertEquals(
                 "PROFILE.EMPLOYMENT.1.RESPONSIBILITIES",
@@ -74,7 +74,7 @@ class FixtureLlmProviderClientTest {
                 """);
 
         assertEquals(
-                "My profile includes Java.",
+                "My evidence-backed experience includes: Java",
                 output.at("/coverLetter/bodyParagraphs/0").textValue());
         assertFalse(output.toString().contains("PROFILE.EMPLOYMENT."));
     }
