@@ -1,14 +1,32 @@
 # LLM Gateway
 
-The single current external-model boundary for Job Seeker Copilot. It exposes
-an internal generation endpoint and supports an OpenAI live adapter plus
-deterministic fixture behaviour for safe testing.
+## Role in Job Seeker Copilot
 
-This migration baseline is **not beta-ready**. Its internal contract leaks
-provider naming, forwards one unrestricted user prompt, has no structured
-output enforcement, bounded retry/backoff/rate-limit/circuit-breaker policy,
-maximum prompt/response size, cost controls, or complete provider privacy
-decision. See [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
+| Role | Called by | Calls | Data | Local port |
+|---|---|---|---|---:|
+| Provider boundary for typed model generation, usage and audit evidence | CV and Cover Letter Service | OpenAI in live mode or System Data fixtures | None | 8090 |
+
+See the central [document journey](https://docs.jobseekercopilot.com/journeys/documents/), [provider integrations](https://docs.jobseekercopilot.com/services/provider-integrations/), and [configuration reference](https://docs.jobseekercopilot.com/operations/configuration/).
+
+The provider-neutral external-model boundary for Job Seeker Copilot. API
+`2.0.0` separates trusted instructions from untrusted input, accepts explicit
+text or strict JSON Schema output contracts, enforces request/response bounds
+and supports fail-closed disabled, live and deterministic fixture modes.
+
+The typed provider boundary is implemented and has been exercised through the
+controlled manual generation path with bounded live OpenAI calls. Durable
+operation identity, wallet reservations and consumer recovery make the approved
+document path replay-safe; automatic retries remain bounded to explicitly safe
+failure categories. This is not a provider reliability or production account
+approval claim. See
+[`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md) and
+[`docs/PROVIDER_NEUTRAL_CONTRACT.md`](docs/PROVIDER_NEUTRAL_CONTRACT.md).
+The dated provider evidence and operator checklist are in
+[`docs/OPENAI_PROVIDER_DATA_DECISION.md`](docs/OPENAI_PROVIDER_DATA_DECISION.md).
+Admission and provider-cost controls are documented in
+[`docs/GENERATION_COST_CONTROLS.md`](docs/GENERATION_COST_CONTROLS.md).
+Provider failure, circuit/readiness, cancellation and recovery behaviour is in
+[`docs/PROVIDER_RESILIENCE_RUNBOOK.md`](docs/PROVIDER_RESILIENCE_RUNBOOK.md).
 
 ## Technology
 
@@ -18,24 +36,52 @@ decision. See [`docs/BETA_READINESS_AUDIT.md`](docs/BETA_READINESS_AUDIT.md).
 
 ## API contract
 
-[`contracts/openapi.json`](contracts/openapi.json) is the migration-time
-OpenAPI snapshot.
+[`contracts/openapi.json`](contracts/openapi.json) is the reviewed API `2.0.0`
+snapshot. New consumers use `POST /api/v2/generations`. The deprecated v1
+endpoint remains only for a bounded CV consumer migration.
+
+The System Data fixture client is generated during Maven `generate-sources`
+from the reviewed, checksum-protected producer contract under
+`src/main/openapi`. Generated sources and binaries are build outputs and are
+not committed. See
+[`docs/CONTRACT_GOVERNANCE.md`](docs/CONTRACT_GOVERNANCE.md).
 
 ## Configuration
 
-Live mode reads the provider credential from `OPENAI_API_KEY`. Never commit a
-credential. CI and automated tests must use deterministic fixture behaviour and
-must not make paid provider requests.
+The safe default is `EXTERNAL_PROVIDER_MODE=DISABLED`.
+
+- `FIXTURE` requires the System Data URL, dataset ID/version and scenario, and
+  cannot start in a production profile.
+- `LIVE` requires runtime-only credentials, explicit model, exact
+  organisation/project, region-matched Chat Completions endpoint, declared
+  retention/data-sharing controls, a named owner, a current decision reference
+  and positive timeouts. It also requires the exact reviewed model, deployment
+  and pricing versions plus non-zero input/output token rates. It cannot start
+  in test/E2E profiles. Live calls use one hard deadline, a zero-queue bounded
+  pool, a pre-parse response-byte limit and a readiness-integrated circuit.
+- Every mode requires valid server-owned task ceilings. Unknown or oversized
+  tasks fail before provider activity. FIXTURE uses explicit zero-cost,
+  non-billable audit metadata.
+- The removed `LLM_MOCK_MODE` setting is rejected rather than silently ignored.
+
+Never commit a credential. CI and automated tests use fixture or mocked
+behaviour and must not make live or paid provider requests.
 
 ## Build
 
 ```bash
-mvn -B clean verify
+./scripts/test-contract-policy.sh
+./scripts/verify-contracts.sh
+./scripts/test-api-contract-policy.sh
+mvn -B --no-transfer-progress clean verify
+./scripts/verify-api-contract.sh contracts/openapi.json target/openapi.json
+docker build --tag local/llm-gateway .
 ```
 
-The command currently fails in a clean clone because the System Data client is
-referenced from an untracked local `libs/` directory. Compiled clients must not
-be committed as the fix.
+These commands are the clean-clone verification contract. They require no
+sibling repository, local `libs/` directory, generated JAR or preinstalled
+Job Seeker Copilot artifact. The tests use mocks or local application
+endpoints and do not make a live or paid provider request.
 
 ## Licence
 

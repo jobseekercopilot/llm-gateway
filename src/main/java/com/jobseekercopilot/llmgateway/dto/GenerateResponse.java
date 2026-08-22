@@ -10,13 +10,13 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Response containing generated content from the LLM provider")
+@Schema(description = "Deprecated v1 response retained during consumer migration")
 public class GenerateResponse {
 
     @Schema(
             description = "The LLM provider that generated the response",
             example = "OPENAI",
-            allowableValues = {"FIXTURE", "MOCK", "OPENAI"}
+            allowableValues = {"FIXTURE", "OPENAI"}
     )
     private String provider;
 
@@ -26,7 +26,7 @@ public class GenerateResponse {
     )
     private String model;
 
-    @Schema(description = "Token usage reported by the LLM provider")
+    @Schema(description = "Deprecated adapter-specific token usage")
     private LlmUsage usage;
 
     @Schema(

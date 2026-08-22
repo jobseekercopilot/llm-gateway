@@ -1,18 +1,32 @@
 package com.jobseekercopilot.llmgateway.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jobseekercopilot.generated.systemdataservice.api.FixtureControllerApi;
+import com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmResponse;
 import com.jobseekercopilot.llmgateway.dto.GenerateRequest;
-import com.jobseekercopilot.llmgateway.dto.GenerateResponse;
+import com.jobseekercopilot.llmgateway.dto.GenerationLimits;
+import com.jobseekercopilot.llmgateway.dto.GenerationOutputContract;
+import com.jobseekercopilot.llmgateway.dto.GenerationOutputFormat;
+import com.jobseekercopilot.llmgateway.dto.GenerationRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -24,90 +38,170 @@ class LlmGatewayControllerIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @MockBean
+    private FixtureControllerApi fixtureControllerApi;
+
+    @BeforeEach
+    void fixtureResponse() {
+        when(fixtureControllerApi.llm(any())).thenReturn(new FixtureLlmResponse()
+                .provider("fixture")
+                .model("fixture-model")
+                .response("{\"document\":\"deterministic\"}")
+                .inputTokens(12L)
+                .outputTokens(8L)
+                .totalTokens(20L));
+    }
+
     @Test
-    void testSuccessfulGeneration() throws Exception {
+    void generatesThroughProviderNeutralV2Contract() throws Exception {
+        mockMvc.perform(post("/api/v2/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(textRequest())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.contractVersion", is("2.0")))
+                .andExpect(jsonPath("$.output", containsString("deterministic")))
+                .andExpect(jsonPath("$.finishReason", is("COMPLETED")))
+                .andExpect(jsonPath("$.usage.totalTokens", is(20)))
+                .andExpect(jsonPath("$.audit.modelId", is("fixture-model")))
+                .andExpect(jsonPath("$.audit.modelDeploymentVersion", is("fixture-model-deployment-1")))
+                .andExpect(jsonPath("$.audit.pricingVersion", is("non-billable-fixture-1")))
+                .andExpect(jsonPath("$.audit.estimatedCostMicroUsd", is(0)))
+                .andExpect(jsonPath("$.provider").doesNotExist())
+                .andExpect(jsonPath("$.model").doesNotExist());
+
+        ArgumentCaptor<com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest> payload =
+                ArgumentCaptor.forClass(
+                        com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest.class);
+        verify(fixtureControllerApi).llm(payload.capture());
+        assertEquals("DOCUMENT_DRAFT", payload.getValue().getOperation());
+    }
+
+    @Test
+    void admitsTheBoundedCvAndCoverLetterTaskUsedByTheDocumentWorkflow()
+            throws Exception {
+        GenerationRequest request = textRequest();
+        request.setTask("CV_COVER_LETTER_GENERATION");
+        request.setUntrustedInput("""
+                {
+                  "approvedEvidence": {
+                    "records": [
+                      {"evidenceId":"JOB.TITLE","value":"Backend Developer"},
+                      {"evidenceId":"JOB.COMPANY","value":"Example Ltd"}
+                    ]
+                  },
+                  "padding":"%s"
+                }
+                """.formatted("x".repeat(82_000)));
+        when(fixtureControllerApi.llm(any())).thenReturn(new FixtureLlmResponse()
+                .provider("fixture")
+                .model("fixture-model")
+                .response("""
+                        {
+                          "cv":{"title":"Fixture CV","targetRole":"Fixture role"},
+                          "coverLetter":{
+                            "title":"Fixture letter",
+                            "jobTitle":"Fixture role",
+                            "companyName":"Fixture company",
+                            "openingParagraph":"Fixture opening"
+                          },
+                          "generationNotes":{"tailoringSummary":"Fixture summary"}
+                        }
+                        """)
+                .inputTokens(12L)
+                .outputTokens(8L)
+                .totalTokens(20L));
+
+        mockMvc.perform(post("/api/v2/generations")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.finishReason", is("COMPLETED")))
+                .andExpect(jsonPath("$.output", containsString("Backend Developer")))
+                .andExpect(jsonPath("$.output", containsString("Example Ltd")));
+
+        ArgumentCaptor<com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest>
+                payload = ArgumentCaptor.forClass(
+                        com.jobseekercopilot.generated.systemdataservice.model.FixtureLlmRequest.class);
+        verify(fixtureControllerApi).llm(payload.capture());
+        assertEquals(
+                "CV_COVER_LETTER_GENERATION",
+                payload.getValue().getOperation());
+    }
+
+    @Test
+    void keepsDeprecatedV1EndpointWorkingDuringConsumerMigration() throws Exception {
         GenerateRequest request = new GenerateRequest();
-        request.setTaskType("CV_GENERATION");
-        request.setPrompt("Generate a CV");
-        request.setTemperature(0.5);
-        request.setMaxTokens(2000);
+        request.setTaskType("DOCUMENT_DRAFT");
+        request.setPrompt("Legacy prompt");
+        request.setTemperature(0.3);
+        request.setMaxTokens(3000);
 
         mockMvc.perform(post("/api/v1/generate")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.provider", is("MOCK")))
-                .andExpect(jsonPath("$.model", is("mock-model")))
-                .andExpect(jsonPath("$.usage.totalTokens", is(3000)))
-                .andExpect(jsonPath("$.response", containsString("\"cv\"")));
+                .andExpect(jsonPath("$.provider", is("FIXTURE")))
+                .andExpect(jsonPath("$.model", is("fixture-model")))
+                .andExpect(jsonPath("$.response", containsString("deterministic")));
     }
 
     @Test
-    void testValidationFailureEmptyPrompt() throws Exception {
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt("");
+    void rejectsMissingSchemaForJsonSchemaFormat() throws Exception {
+        GenerationRequest request = textRequest();
+        request.setOutput(new GenerationOutputContract(GenerationOutputFormat.JSON_SCHEMA, null, null, null));
 
-        mockMvc.perform(post("/api/v1/generate")
+        mockMvc.perform(post("/api/v2/generations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status", is(400)))
-                .andExpect(jsonPath("$.error", is("Validation Failed")));
+                .andExpect(jsonPath("$.error", is("VALIDATION_FAILED")));
     }
 
     @Test
-    void testValidationFailureNullPrompt() throws Exception {
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt(null);
+    void rejectsPromptAndTokenLimitsBeforeAdapterUse() throws Exception {
+        GenerationRequest request = textRequest();
+        request.setTrustedInstructions("x".repeat(12_001));
+        request.setLimits(new GenerationLimits(4097, 1.1));
 
-        mockMvc.perform(post("/api/v1/generate")
+        mockMvc.perform(post("/api/v2/generations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status", is(400)))
-                .andExpect(jsonPath("$.error", is("Validation Failed")));
+                .andExpect(jsonPath("$.details").isArray());
     }
 
     @Test
-    void testValidationFailureInvalidTemperature() throws Exception {
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt("Test prompt");
-        request.setTemperature(3.0);
+    void rejectsUnsupportedTaskAgainstServerPolicyBeforeFixtureUse() throws Exception {
+        GenerationRequest request = textRequest();
+        request.setTask("UNSUPPORTED_TASK");
 
-        mockMvc.perform(post("/api/v1/generate")
+        mockMvc.perform(post("/api/v2/generations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status", is(400)))
-                .andExpect(jsonPath("$.error", is("Validation Failed")));
+                .andExpect(jsonPath("$.error", is("GENERATION_LIMIT_EXCEEDED")));
     }
 
     @Test
-    void testValidationFailureInvalidMaxTokens() throws Exception {
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt("Test prompt");
-        request.setMaxTokens(0);
+    void rejectsUnknownFields() throws Exception {
+        String request = objectMapper.writeValueAsString(textRequest());
+        request = request.substring(0, request.length() - 1) + ",\"provider\":\"OPENAI\"}";
 
-        mockMvc.perform(post("/api/v1/generate")
+        mockMvc.perform(post("/api/v2/generations")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .content(request))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status", is(400)))
-                .andExpect(jsonPath("$.error", is("Validation Failed")));
+                .andExpect(jsonPath("$.error", is("INVALID_REQUEST")));
     }
 
-    @Test
-    void testGenerationWithDefaults() throws Exception {
-        GenerateRequest request = new GenerateRequest();
-        request.setPrompt("Test prompt with defaults");
-
-        mockMvc.perform(post("/api/v1/generate")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.provider", is("MOCK")))
-                .andExpect(jsonPath("$.model", is("mock-model")))
-                .andExpect(jsonPath("$.usage.totalTokens", is(3000)))
-                .andExpect(jsonPath("$.response", containsString("\"cv\"")));
+    private GenerationRequest textRequest() {
+        return new GenerationRequest(
+                "2.0",
+                "DOCUMENT_DRAFT",
+                "Use approved facts only.",
+                "{\"job\":\"untrusted\"}",
+                new GenerationOutputContract(GenerationOutputFormat.TEXT, null, null, null),
+                new GenerationLimits(3000, 0.3)
+        );
     }
 }

@@ -2,7 +2,7 @@ server:
   port: ${SERVER_PORT:8090}
 
 external-provider:
-  mode: ${EXTERNAL_PROVIDER_MODE:LIVE}
+  mode: ${EXTERNAL_PROVIDER_MODE:DISABLED}
 
 fixture:
   system-data-service-url: ${SYSTEM_DATA_SERVICE_URL:http://localhost:8103}
@@ -10,20 +10,59 @@ fixture:
   dataset-version: ${FIXTURE_DATASET_VERSION:1.0.0}
   scenario: ${FIXTURE_SCENARIO:happy-path}
 
+generation-controls:
+  max-automatic-provider-retries: ${GENERATION_MAX_AUTOMATIC_PROVIDER_RETRIES:1}
+  provider-retry-delay-millis: ${GENERATION_PROVIDER_RETRY_DELAY_MILLIS:1000}
+  admission-policy-version: ${GENERATION_ADMISSION_POLICY_VERSION:document-generation-admission-2026-07}
+  model-id: ${GENERATION_MODEL_ID:fixture-model}
+  model-deployment-version: ${GENERATION_MODEL_DEPLOYMENT_VERSION:fixture-model-deployment-1}
+  pricing-version: ${GENERATION_PRICING_VERSION:non-billable-fixture-1}
+  input-rate-micro-usd-per-million-tokens: ${GENERATION_INPUT_RATE_MICRO_USD_PER_MILLION_TOKENS:0}
+  output-rate-micro-usd-per-million-tokens: ${GENERATION_OUTPUT_RATE_MICRO_USD_PER_MILLION_TOKENS:0}
+  input-token-reserve: ${GENERATION_INPUT_TOKEN_RESERVE:256}
+  tasks:
+    DOCUMENT_DRAFT:
+      max-estimated-input-tokens: ${DOCUMENT_DRAFT_MAX_ESTIMATED_INPUT_TOKENS:60000}
+      max-output-tokens: ${DOCUMENT_DRAFT_MAX_OUTPUT_TOKENS:4096}
+    CV_COVER_LETTER_GENERATION:
+      max-estimated-input-tokens: ${CV_COVER_LETTER_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:220000}
+      max-output-tokens: ${CV_COVER_LETTER_GENERATION_MAX_OUTPUT_TOKENS:16384}
+    CV_GENERATION:
+      max-estimated-input-tokens: ${CV_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:60000}
+      max-output-tokens: ${CV_GENERATION_MAX_OUTPUT_TOKENS:16384}
+    COVER_LETTER_GENERATION:
+      max-estimated-input-tokens: ${COVER_LETTER_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:60000}
+      max-output-tokens: ${COVER_LETTER_GENERATION_MAX_OUTPUT_TOKENS:4096}
+    GENERAL_GENERATION:
+      max-estimated-input-tokens: ${GENERAL_GENERATION_MAX_ESTIMATED_INPUT_TOKENS:20000}
+      max-output-tokens: ${GENERAL_GENERATION_MAX_OUTPUT_TOKENS:2048}
+
 openai:
   api-key: ${OPENAI_API_KEY:}
-  model: gpt-4.1-mini
-  endpoint: https://api.openai.com/v1/chat/completions
-  connect-timeout: 10000
-  read-timeout: 60000
-
-llm:
-  mock-mode: ${LLM_MOCK_MODE:false}
+  model: ${OPENAI_MODEL:}
+  endpoint: ${OPENAI_ENDPOINT:https://api.openai.com/v1/chat/completions}
+  organization-id: ${OPENAI_ORGANIZATION_ID:}
+  project-id: ${OPENAI_PROJECT_ID:}
+  data-region: ${OPENAI_DATA_REGION:}
+  data-control-mode: ${OPENAI_DATA_CONTROL_MODE:}
+  data-sharing-mode: ${OPENAI_DATA_SHARING_MODE:}
+  privacy-policy-version: ${OPENAI_PRIVACY_POLICY_VERSION:}
+  privacy-decision-id: ${OPENAI_PRIVACY_DECISION_ID:}
+  privacy-owner: ${OPENAI_PRIVACY_OWNER:}
+  privacy-review-on: ${OPENAI_PRIVACY_REVIEW_ON:}
+  connect-timeout: ${OPENAI_CONNECT_TIMEOUT_MS:10000}
+  call-timeout: ${OPENAI_CALL_TIMEOUT_MS:480000}
+  max-response-bytes: ${OPENAI_MAX_RESPONSE_BYTES:1048576}
+  max-concurrent-calls: ${OPENAI_MAX_CONCURRENT_CALLS:8}
+  circuit-failure-threshold: ${OPENAI_CIRCUIT_FAILURE_THRESHOLD:3}
+  circuit-open-duration: ${OPENAI_CIRCUIT_OPEN_DURATION_MS:30000}
 
 spring:
   application:
     name: llm-gateway
   jackson:
+    deserialization:
+      fail-on-unknown-properties: true
     serialization:
       write-dates-as-timestamps: false
 
@@ -32,9 +71,22 @@ management:
     web:
       exposure:
         include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,providerCircuit
 
 logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] [%X{serviceName}] [%thread] %logger{36} - %msg%n"
   level:
     com.jobseekercopilot: ${APP_LOG_LEVEL:INFO}
+    org.springframework.web.HttpLogging: INFO
+    org.springframework.web.client.RestTemplate: INFO
+    org.springframework.web.method.HandlerMethod: INFO
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO
+    org.springframework.web.servlet.mvc.method.annotation.HttpEntityMethodProcessor: INFO
+    org.springframework.web.servlet.mvc.method.annotation.RequestResponseBodyMethodProcessor: INFO
