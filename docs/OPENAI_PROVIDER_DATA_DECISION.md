@@ -1,8 +1,8 @@
 # OpenAI provider data decision
 
-Decision evidence date: 2026-07-25
+Decision evidence date: 2026-08-23
 
-Required runtime policy version: `openai-api-data-controls-2026-07-25`
+Required runtime policy version: `openai-api-data-controls-2026-08-23`
 
 Maximum review interval: 93 days
 
@@ -60,15 +60,16 @@ LIVE startup fails unless all of the following are declared:
 
 | Setting | Required outcome |
 | --- | --- |
-| `OPENAI_ORGANIZATION_ID` | Exact `org-`/`org_` organisation target |
-| `OPENAI_PROJECT_ID` | Exact `proj_` project target; sent on every request |
+| `OPENAI_ORGANIZATION_ID` | Optional exact `org-`/`org_` selector for credentials that require an organisation header |
+| `OPENAI_PROJECT_ID` | Optional exact `proj_` selector; when present it is sent on every request |
 | `OPENAI_DATA_REGION` | One explicit supported region; must match the endpoint hostname |
 | `OPENAI_DATA_CONTROL_MODE` | `STANDARD_30_DAY_ABUSE_MONITORING`, `MODIFIED_ABUSE_MONITORING` or `ZERO_DATA_RETENTION` |
 | `OPENAI_DATA_SHARING_MODE` | Must be `DISABLED` |
 | `OPENAI_PRIVACY_POLICY_VERSION` | Must equal the reviewed version at the top of this document |
 | `OPENAI_PRIVACY_DECISION_ID` | Durable reference to the approved account/project evidence |
 | `OPENAI_PRIVACY_OWNER` | Named person accountable for the decision |
-| `OPENAI_PRIVACY_REVIEW_ON` | ISO date that is not expired or more than 93 days away |
+| `OPENAI_PRIVACY_REVIEWED_ON` | ISO date when the accountable owner completed the review; cannot be in the future |
+| `OPENAI_PRIVACY_REVIEW_DUE_ON` | ISO date when the next review is due; must follow the completed review, not be overdue and be no more than 93 days after it |
 
 The endpoint must be exactly
 `https://<declared-host>/v1/chat/completions`, without a port, query,
@@ -88,6 +89,13 @@ current hosts:
 | `SOUTH_KOREA` | `kr.api.openai.com` | MAM or ZDR required |
 | `UNITED_KINGDOM` | `gb.api.openai.com` | MAM or ZDR required; storage is not a regional-processing claim |
 | `UNITED_ARAB_EMIRATES` | `ae.api.openai.com` | MAM or ZDR and provider approval required |
+
+The evidence currently available for the initial public beta supports only
+`GLOBAL` with `https://api.openai.com/v1/chat/completions`,
+`STANDARD_30_DAY_ABUSE_MONITORING` and data sharing `DISABLED`. That combination
+makes no UK or EEA data-residency claim. Do not configure a regional endpoint,
+Modified Abuse Monitoring or Zero Data Retention unless new account-specific
+eligibility and settings evidence has been approved.
 
 The adapter sends an allowlisted text-only payload: model, two separated
 messages, temperature, maximum completion tokens, `store=false`, and strict

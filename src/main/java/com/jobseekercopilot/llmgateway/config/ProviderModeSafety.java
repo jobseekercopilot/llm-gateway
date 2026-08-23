@@ -16,7 +16,7 @@ import org.springframework.util.StringUtils;
 
 @Component
 public class ProviderModeSafety implements ApplicationRunner {
-    static final String REQUIRED_PRIVACY_POLICY_VERSION = "openai-api-data-controls-2026-07-25";
+    static final String REQUIRED_PRIVACY_POLICY_VERSION = "openai-api-data-controls-2026-08-23";
     static final long MAX_PRIVACY_REVIEW_DAYS = 93;
     private static final String CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
     private static final Logger log = LoggerFactory.getLogger(ProviderModeSafety.class);
@@ -216,20 +216,31 @@ public class ProviderModeSafety implements ApplicationRunner {
             throw new IllegalStateException("LIVE mode requires a named privacy decision owner.");
         }
 
-        LocalDate reviewOn;
+        LocalDate reviewedOn;
+        LocalDate reviewDueOn;
         try {
-            reviewOn = LocalDate.parse(openAiConfiguration.getPrivacyReviewOn());
+            reviewedOn = LocalDate.parse(openAiConfiguration.getPrivacyReviewedOn());
         } catch (DateTimeException | NullPointerException exception) {
             throw new IllegalStateException(
-                    "LIVE mode requires an ISO-8601 OpenAI privacy review date.", exception);
+                    "LIVE mode requires an ISO-8601 completed OpenAI privacy review date.", exception);
+        }
+        try {
+            reviewDueOn = LocalDate.parse(openAiConfiguration.getPrivacyReviewDueOn());
+        } catch (DateTimeException | NullPointerException exception) {
+            throw new IllegalStateException(
+                    "LIVE mode requires an ISO-8601 OpenAI privacy review due date.", exception);
         }
         LocalDate today = LocalDate.now(clock);
-        if (reviewOn.isBefore(today)) {
-            throw new IllegalStateException("The OpenAI privacy decision review date has expired.");
+        if (reviewedOn.isAfter(today)) {
+            throw new IllegalStateException("The completed OpenAI privacy review date cannot be in the future.");
         }
-        if (reviewOn.isAfter(today.plusDays(MAX_PRIVACY_REVIEW_DAYS))) {
+        if (reviewDueOn.isBefore(today)) {
+            throw new IllegalStateException("The OpenAI privacy decision review is overdue.");
+        }
+        if (!reviewDueOn.isAfter(reviewedOn)
+                || reviewDueOn.isAfter(reviewedOn.plusDays(MAX_PRIVACY_REVIEW_DAYS))) {
             throw new IllegalStateException(
-                    "The OpenAI privacy decision review date must be within 93 days.");
+                    "The OpenAI privacy review due date must follow the completed review and be within 93 days.");
         }
     }
 

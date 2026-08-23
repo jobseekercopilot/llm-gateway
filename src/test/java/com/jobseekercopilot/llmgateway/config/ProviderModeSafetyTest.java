@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProviderModeSafetyTest {
     private static final Clock REVIEW_CLOCK =
-            Clock.fixed(Instant.parse("2026-07-25T12:00:00Z"), ZoneOffset.UTC);
+            Clock.fixed(Instant.parse("2026-08-23T12:00:00Z"), ZoneOffset.UTC);
 
     @Test
     void disabledIsTheSafeDefault() {
@@ -94,13 +94,22 @@ class ProviderModeSafetyTest {
         stalePolicy.setPrivacyPolicyVersion("openai-api-data-controls-2025-01-01");
         assertThrows(IllegalStateException.class, () -> liveSafety(stalePolicy).validate());
 
-        OpenAiConfiguration expiredReview = validLiveConfiguration();
-        expiredReview.setPrivacyReviewOn("2026-07-24");
-        assertThrows(IllegalStateException.class, () -> liveSafety(expiredReview).validate());
+        OpenAiConfiguration futureReview = validLiveConfiguration();
+        futureReview.setPrivacyReviewedOn("2026-08-24");
+        assertThrows(IllegalStateException.class, () -> liveSafety(futureReview).validate());
+
+        OpenAiConfiguration overdueReview = validLiveConfiguration();
+        overdueReview.setPrivacyReviewDueOn("2026-08-22");
+        assertThrows(IllegalStateException.class, () -> liveSafety(overdueReview).validate());
 
         OpenAiConfiguration distantReview = validLiveConfiguration();
-        distantReview.setPrivacyReviewOn("2027-07-25");
+        distantReview.setPrivacyReviewDueOn("2026-11-25");
         assertThrows(IllegalStateException.class, () -> liveSafety(distantReview).validate());
+
+        OpenAiConfiguration invertedReview = validLiveConfiguration();
+        invertedReview.setPrivacyReviewedOn("2026-08-23");
+        invertedReview.setPrivacyReviewDueOn("2026-08-23");
+        assertThrows(IllegalStateException.class, () -> liveSafety(invertedReview).validate());
     }
 
     @Test
@@ -195,7 +204,8 @@ class ProviderModeSafetyTest {
         configuration.setPrivacyPolicyVersion(ProviderModeSafety.REQUIRED_PRIVACY_POLICY_VERSION);
         configuration.setPrivacyDecisionId("privacy-decision/llm-02");
         configuration.setPrivacyOwner("Named privacy owner");
-        configuration.setPrivacyReviewOn("2026-10-25");
+        configuration.setPrivacyReviewedOn("2026-08-23");
+        configuration.setPrivacyReviewDueOn("2026-11-23");
         configuration.setConnectTimeout(1000);
         configuration.setCallTimeout(1000);
         return configuration;
