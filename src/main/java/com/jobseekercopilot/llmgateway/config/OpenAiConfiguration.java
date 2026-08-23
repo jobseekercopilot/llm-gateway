@@ -20,7 +20,8 @@ public class OpenAiConfiguration {
     private String privacyPolicyVersion;
     private String privacyDecisionId;
     private String privacyOwner;
-    private String privacyReviewOn;
+    private String privacyReviewedOn;
+    private String privacyReviewDueOn;
     private int connectTimeout = 10000;
     private int callTimeout = 480000;
     private int maxResponseBytes = 1048576;
