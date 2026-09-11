@@ -20,15 +20,18 @@ public class GenerationControlSafety implements ApplicationRunner {
     private final GenerationControlProperties controls;
     private final ExternalProviderProperties providerProperties;
     private final OpenAiConfiguration openAiConfiguration;
+    private final BedrockConfiguration bedrockConfiguration;
 
     public GenerationControlSafety(
             GenerationControlProperties controls,
             ExternalProviderProperties providerProperties,
-            OpenAiConfiguration openAiConfiguration
+            OpenAiConfiguration openAiConfiguration,
+            BedrockConfiguration bedrockConfiguration
     ) {
         this.controls = controls;
         this.providerProperties = providerProperties;
         this.openAiConfiguration = openAiConfiguration;
+        this.bedrockConfiguration = bedrockConfiguration;
     }
 
     @Override
@@ -81,15 +84,19 @@ public class GenerationControlSafety implements ApplicationRunner {
             }
         }
 
-        if (providerProperties.getMode() == ExternalProviderMode.LIVE) {
+        ExternalProviderMode mode = providerProperties.getMode();
+        if (mode == ExternalProviderMode.LIVE || mode == ExternalProviderMode.BEDROCK) {
+            String activeModel = mode == ExternalProviderMode.BEDROCK
+                    ? bedrockConfiguration.getModelId()
+                    : openAiConfiguration.getModel();
             if (controls.getModelId().startsWith("fixture-")
-                    || !controls.getModelId().equals(openAiConfiguration.getModel())
+                    || !controls.getModelId().equals(activeModel)
                     || controls.getModelDeploymentVersion().startsWith("fixture-")
                     || controls.getPricingVersion().startsWith("non-billable-")
                     || controls.getInputRateMicroUsdPerMillionTokens() <= 0
                     || controls.getOutputRateMicroUsdPerMillionTokens() <= 0) {
                 throw new IllegalStateException(
-                        "LIVE mode requires reviewed model deployment and non-zero versioned pricing controls.");
+                        "Billable provider modes require a reviewed model deployment and non-zero versioned pricing controls.");
             }
         }
     }

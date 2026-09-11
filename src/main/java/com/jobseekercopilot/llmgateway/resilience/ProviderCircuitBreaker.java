@@ -1,6 +1,6 @@
 package com.jobseekercopilot.llmgateway.resilience;
 
-import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.jobseekercopilot.llmgateway.config.ProviderResilienceSettings;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureException;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
 import java.time.Clock;
@@ -20,10 +20,10 @@ public class ProviderCircuitBreaker {
     private boolean halfOpenProbeInFlight;
 
     @Autowired
-    public ProviderCircuitBreaker(OpenAiConfiguration configuration) {
+    public ProviderCircuitBreaker(ProviderResilienceSettings settings) {
         this(
-                configuration.getCircuitFailureThreshold(),
-                Duration.ofMillis(configuration.getCircuitOpenDuration()),
+                settings.circuitFailureThreshold(),
+                Duration.ofMillis(settings.circuitOpenDuration()),
                 Clock.systemUTC()
         );
     }

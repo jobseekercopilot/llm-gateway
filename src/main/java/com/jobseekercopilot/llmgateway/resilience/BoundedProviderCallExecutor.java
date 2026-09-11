@@ -1,6 +1,6 @@
 package com.jobseekercopilot.llmgateway.resilience;
 
-import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.jobseekercopilot.llmgateway.config.ProviderResilienceSettings;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureException;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
 import jakarta.annotation.PreDestroy;
@@ -27,18 +27,18 @@ public class BoundedProviderCallExecutor implements ProviderCallExecutor {
     private final Duration callTimeout;
 
     @Autowired
-    public BoundedProviderCallExecutor(OpenAiConfiguration configuration) {
+    public BoundedProviderCallExecutor(ProviderResilienceSettings settings) {
         this(
                 new ThreadPoolExecutor(
-                        configuration.getMaxConcurrentCalls(),
-                        configuration.getMaxConcurrentCalls(),
+                        settings.maxConcurrentCalls(),
+                        settings.maxConcurrentCalls(),
                         0L,
                         TimeUnit.MILLISECONDS,
                         new SynchronousQueue<>(),
                         providerThreadFactory(),
                         new ThreadPoolExecutor.AbortPolicy()
                 ),
-                Duration.ofMillis(configuration.getCallTimeout())
+                Duration.ofMillis(settings.callTimeout())
         );
     }
 

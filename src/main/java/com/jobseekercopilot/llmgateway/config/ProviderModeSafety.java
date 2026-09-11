@@ -23,6 +23,7 @@ public class ProviderModeSafety implements ApplicationRunner {
     private final ExternalProviderProperties providerProperties;
     private final FixtureProperties fixtureProperties;
     private final OpenAiConfiguration openAiConfiguration;
+    private final BedrockConfiguration bedrockConfiguration;
     private final Environment environment;
     private final Clock clock;
 
@@ -31,21 +32,25 @@ public class ProviderModeSafety implements ApplicationRunner {
             ExternalProviderProperties providerProperties,
             FixtureProperties fixtureProperties,
             OpenAiConfiguration openAiConfiguration,
+            BedrockConfiguration bedrockConfiguration,
             Environment environment
     ) {
-        this(providerProperties, fixtureProperties, openAiConfiguration, environment, Clock.systemUTC());
+        this(providerProperties, fixtureProperties, openAiConfiguration, bedrockConfiguration,
+                environment, Clock.systemUTC());
     }
 
     ProviderModeSafety(
             ExternalProviderProperties providerProperties,
             FixtureProperties fixtureProperties,
             OpenAiConfiguration openAiConfiguration,
+            BedrockConfiguration bedrockConfiguration,
             Environment environment,
             Clock clock
     ) {
         this.providerProperties = providerProperties;
         this.fixtureProperties = fixtureProperties;
         this.openAiConfiguration = openAiConfiguration;
+        this.bedrockConfiguration = bedrockConfiguration;
         this.environment = environment;
         this.clock = clock;
     }
@@ -53,18 +58,26 @@ public class ProviderModeSafety implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         validate();
+        ExternalProviderMode activeMode = providerProperties.getMode();
+        boolean externalCallsEnabled = activeMode == ExternalProviderMode.LIVE
+                || activeMode == ExternalProviderMode.BEDROCK;
         log.info("provider mode active gateway=llm-gateway mode={} externalCallsEnabled={}",
-                providerProperties.getMode(), providerProperties.getMode() == ExternalProviderMode.LIVE);
+                activeMode, externalCallsEnabled);
         if (providerProperties.getMode() == ExternalProviderMode.FIXTURE) {
             log.info("fixture source active gateway=llm-gateway datasetId={} datasetVersion={} scenario={}",
                     fixtureProperties.getDatasetId(), fixtureProperties.getDatasetVersion(), fixtureProperties.getScenario());
         }
-        if (providerProperties.getMode() == ExternalProviderMode.LIVE) {
+        if (activeMode == ExternalProviderMode.LIVE) {
             log.info("live provider privacy controls active gateway=llm-gateway region={} dataControl={} dataSharing={} policyVersion={}",
                     openAiConfiguration.getDataRegion(),
                     openAiConfiguration.getDataControlMode(),
                     openAiConfiguration.getDataSharingMode(),
                     openAiConfiguration.getPrivacyPolicyVersion());
+        }
+        if (activeMode == ExternalProviderMode.BEDROCK) {
+            log.info("bedrock provider active gateway=llm-gateway awsRegion={} model={}",
+                    bedrockConfiguration.getRegion(),
+                    bedrockConfiguration.getModelId());
         }
     }
 
@@ -83,11 +96,15 @@ public class ProviderModeSafety implements ApplicationRunner {
         if (production && mode == ExternalProviderMode.FIXTURE) {
             throw new IllegalStateException("llm-gateway cannot start in FIXTURE mode with a production profile.");
         }
-        if (automated && mode == ExternalProviderMode.LIVE) {
-            throw new IllegalStateException("llm-gateway cannot start in LIVE mode with a test, e2e or fixture profile.");
+        if (automated && (mode == ExternalProviderMode.LIVE || mode == ExternalProviderMode.BEDROCK)) {
+            throw new IllegalStateException(
+                    "llm-gateway cannot start in a live provider mode with a test, e2e or fixture profile.");
         }
         if (mode == ExternalProviderMode.LIVE) {
             validateLiveConfiguration();
+        }
+        if (mode == ExternalProviderMode.BEDROCK) {
+            validateBedrockConfiguration();
         }
         if (mode == ExternalProviderMode.FIXTURE) {
             validateFixtureConfiguration();
@@ -152,6 +169,59 @@ public class ProviderModeSafety implements ApplicationRunner {
                 == OpenAiDataControlMode.STANDARD_30_DAY_ABUSE_MONITORING) {
             throw new IllegalStateException(
                     "The declared OpenAI region requires Modified Abuse Monitoring or Zero Data Retention.");
+        }
+    }
+
+    private void validateBedrockConfiguration() {
+        if (!StringUtils.hasText(bedrockConfiguration.getModelId())
+                || bedrockConfiguration.getModelId().length() > 128
+                || bedrockConfiguration.getModelId().chars().anyMatch(Character::isWhitespace)) {
+            throw new IllegalStateException("BEDROCK mode requires an explicit model or inference-profile id.");
+        }
+        if (!StringUtils.hasText(bedrockConfiguration.getRegion())
+                || !bedrockConfiguration.getRegion().matches("[a-z]{2}-[a-z]+-\\d")) {
+            throw new IllegalStateException("BEDROCK mode requires a valid AWS region, for example eu-west-2.");
+        }
+        if (StringUtils.hasText(bedrockConfiguration.getEndpointOverride())) {
+            URI endpoint;
+            try {
+                endpoint = URI.create(bedrockConfiguration.getEndpointOverride());
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalStateException(
+                        "BEDROCK mode requires a valid HTTPS endpoint override when one is set.", exception);
+            }
+            if (!"https".equalsIgnoreCase(endpoint.getScheme())
+                    || !StringUtils.hasText(endpoint.getHost())
+                    || StringUtils.hasText(endpoint.getUserInfo())) {
+                throw new IllegalStateException(
+                        "BEDROCK mode requires an HTTPS endpoint override with no embedded credentials.");
+            }
+        }
+        if (bedrockConfiguration.getConnectTimeout() <= 0
+                || bedrockConfiguration.getCallTimeout() <= 0
+                || bedrockConfiguration.getConnectTimeout() > bedrockConfiguration.getCallTimeout()) {
+            throw new IllegalStateException(
+                    "BEDROCK mode requires positive timeouts and a connect timeout within the provider-call deadline.");
+        }
+        if (bedrockConfiguration.getCallTimeout() > 480_000) {
+            throw new IllegalStateException("BEDROCK mode caps the provider-call deadline at 480 seconds.");
+        }
+        if (bedrockConfiguration.getMaxResponseBytes() < 1024
+                || bedrockConfiguration.getMaxResponseBytes() > 2_097_152) {
+            throw new IllegalStateException(
+                    "BEDROCK mode requires a provider response limit between 1 KiB and 2 MiB.");
+        }
+        if (bedrockConfiguration.getMaxConcurrentCalls() < 1
+                || bedrockConfiguration.getMaxConcurrentCalls() > 32) {
+            throw new IllegalStateException(
+                    "BEDROCK mode requires provider concurrency between 1 and 32.");
+        }
+        if (bedrockConfiguration.getCircuitFailureThreshold() < 1
+                || bedrockConfiguration.getCircuitFailureThreshold() > 20
+                || bedrockConfiguration.getCircuitOpenDuration() < 1_000
+                || bedrockConfiguration.getCircuitOpenDuration() > 300_000) {
+            throw new IllegalStateException(
+                    "BEDROCK mode requires bounded provider circuit thresholds and recovery duration.");
         }
     }
 

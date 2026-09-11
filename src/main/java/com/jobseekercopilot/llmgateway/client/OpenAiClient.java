@@ -3,6 +3,7 @@ package com.jobseekercopilot.llmgateway.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.jobseekercopilot.llmgateway.config.ProviderResilienceSettings;
 import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
 import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
 import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
@@ -90,7 +91,7 @@ public class OpenAiClient implements LlmProviderClient {
                 openAiConfiguration,
                 restTemplate,
                 new ObjectMapper(),
-                new ProviderCircuitBreaker(openAiConfiguration),
+                new ProviderCircuitBreaker(ProviderResilienceSettings.fromOpenAi(openAiConfiguration)),
                 providerCall -> {
                     try {
                         return providerCall.call();

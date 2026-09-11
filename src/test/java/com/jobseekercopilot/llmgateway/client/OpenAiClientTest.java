@@ -2,6 +2,7 @@ package com.jobseekercopilot.llmgateway.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.jobseekercopilot.llmgateway.config.ProviderResilienceSettings;
 import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
 import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
 import com.jobseekercopilot.llmgateway.domain.ProviderGenerationResult;
@@ -47,7 +48,8 @@ class OpenAiClientTest {
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(
                         ProviderCircuitBreaker.class,
-                        () -> new ProviderCircuitBreaker(configuration())
+                        () -> new ProviderCircuitBreaker(
+                                ProviderResilienceSettings.fromOpenAi(configuration()))
                 )
                 .withBean(ProviderCallExecutor.class, this::directExecutor)
                 .run(context ->
