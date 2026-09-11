@@ -21,7 +21,7 @@ public class BedrockConfiguration {
 
     /**
      * Bedrock model id or inference-profile identifier passed to the Converse
-     * API, e.g. {@code eu.anthropic.claude-3-5-sonnet-20240620-v1:0}.
+     * API, e.g. {@code anthropic.claude-3-7-sonnet-20250219-v1:0}.
      */
     private String modelId;
 
