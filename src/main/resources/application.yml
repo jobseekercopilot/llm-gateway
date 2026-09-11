@@ -58,6 +58,17 @@ openai:
   circuit-failure-threshold: ${OPENAI_CIRCUIT_FAILURE_THRESHOLD:3}
   circuit-open-duration: ${OPENAI_CIRCUIT_OPEN_DURATION_MS:30000}
 
+bedrock:
+  model-id: ${BEDROCK_MODEL_ID:}
+  region: ${BEDROCK_REGION:${AWS_REGION:}}
+  endpoint-override: ${BEDROCK_ENDPOINT_OVERRIDE:}
+  connect-timeout: ${BEDROCK_CONNECT_TIMEOUT_MS:10000}
+  call-timeout: ${BEDROCK_CALL_TIMEOUT_MS:480000}
+  max-response-bytes: ${BEDROCK_MAX_RESPONSE_BYTES:1048576}
+  max-concurrent-calls: ${BEDROCK_MAX_CONCURRENT_CALLS:8}
+  circuit-failure-threshold: ${BEDROCK_CIRCUIT_FAILURE_THRESHOLD:3}
+  circuit-open-duration: ${BEDROCK_CIRCUIT_OPEN_DURATION_MS:30000}
+
 spring:
   application:
     name: llm-gateway

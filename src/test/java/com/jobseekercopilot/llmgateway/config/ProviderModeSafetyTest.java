@@ -51,7 +51,8 @@ class ProviderModeSafetyTest {
         OpenAiConfiguration configuration = validLiveConfiguration();
         configuration.setEndpoint("http://api.openai.com/v1/chat/completions");
         ProviderModeSafety insecureEndpoint = new ProviderModeSafety(
-                properties, fixtureProperties(), configuration, new MockEnvironment(), REVIEW_CLOCK);
+                properties, fixtureProperties(), configuration, new BedrockConfiguration(),
+                new MockEnvironment(), REVIEW_CLOCK);
         assertThrows(IllegalStateException.class, insecureEndpoint::validate);
     }
 
@@ -60,7 +61,8 @@ class ProviderModeSafetyTest {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(ExternalProviderMode.LIVE);
         ProviderModeSafety safety = new ProviderModeSafety(
-                properties, fixtureProperties(), validLiveConfiguration(), new MockEnvironment(), REVIEW_CLOCK);
+                properties, fixtureProperties(), validLiveConfiguration(), new BedrockConfiguration(),
+                new MockEnvironment(), REVIEW_CLOCK);
         assertDoesNotThrow(safety::validate);
     }
 
@@ -172,14 +174,16 @@ class ProviderModeSafetyTest {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(mode);
         return new ProviderModeSafety(
-                properties, fixtureProperties(), new OpenAiConfiguration(), environment, REVIEW_CLOCK);
+                properties, fixtureProperties(), new OpenAiConfiguration(), new BedrockConfiguration(),
+                environment, REVIEW_CLOCK);
     }
 
     private ProviderModeSafety liveSafety(OpenAiConfiguration configuration) {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(ExternalProviderMode.LIVE);
         return new ProviderModeSafety(
-                properties, fixtureProperties(), configuration, new MockEnvironment(), REVIEW_CLOCK);
+                properties, fixtureProperties(), configuration, new BedrockConfiguration(),
+                new MockEnvironment(), REVIEW_CLOCK);
     }
 
     private FixtureProperties fixtureProperties() {

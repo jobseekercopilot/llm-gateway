@@ -79,7 +79,10 @@ class GenerationControlSafetyTest {
         provider.setMode(mode);
         OpenAiConfiguration openAiConfiguration = new OpenAiConfiguration();
         openAiConfiguration.setModel("configured-model");
-        return new GenerationControlSafety(controls, provider, openAiConfiguration);
+        BedrockConfiguration bedrockConfiguration = new BedrockConfiguration();
+        bedrockConfiguration.setModelId("configured-model");
+        return new GenerationControlSafety(
+                controls, provider, openAiConfiguration, bedrockConfiguration);
     }
 
     private GenerationControlProperties validControls() {

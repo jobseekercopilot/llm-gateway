@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import com.jobseekercopilot.llmgateway.config.ExternalProviderMode;
 import com.jobseekercopilot.llmgateway.config.ExternalProviderProperties;
 import com.jobseekercopilot.llmgateway.config.OpenAiConfiguration;
+import com.jobseekercopilot.llmgateway.config.ProviderResilienceSettings;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.actuate.health.Status;
@@ -17,7 +18,8 @@ class ProviderCircuitHealthIndicatorTest {
         properties.setMode(ExternalProviderMode.LIVE);
         OpenAiConfiguration configuration = new OpenAiConfiguration();
         configuration.setCircuitFailureThreshold(1);
-        ProviderCircuitBreaker circuit = new ProviderCircuitBreaker(configuration);
+        ProviderCircuitBreaker circuit = new ProviderCircuitBreaker(
+                ProviderResilienceSettings.fromOpenAi(configuration));
         ProviderCircuitBreaker.Permit permit = circuit.acquirePermit();
         circuit.recordFailure(permit, ProviderFailureType.UNAVAILABLE);
 
@@ -32,7 +34,8 @@ class ProviderCircuitHealthIndicatorTest {
     void fixtureModeStaysReadyWithoutOpeningExternalCalls() {
         ExternalProviderProperties properties = new ExternalProviderProperties();
         properties.setMode(ExternalProviderMode.FIXTURE);
-        ProviderCircuitBreaker circuit = new ProviderCircuitBreaker(new OpenAiConfiguration());
+        ProviderCircuitBreaker circuit = new ProviderCircuitBreaker(
+                ProviderResilienceSettings.fromOpenAi(new OpenAiConfiguration()));
 
         var health = new ProviderCircuitHealthIndicator(properties, circuit).health();
 
