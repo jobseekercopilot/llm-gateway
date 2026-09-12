@@ -3,6 +3,9 @@ package com.jobseekercopilot.llmgateway.client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jobseekercopilot.llmgateway.config.BedrockConfiguration;
 import com.jobseekercopilot.llmgateway.domain.GenerationCommand;
 import com.jobseekercopilot.llmgateway.domain.GenerationFinishReason;
@@ -14,13 +17,17 @@ import com.jobseekercopilot.llmgateway.exception.GenerationRefusedException;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureException;
 import com.jobseekercopilot.llmgateway.exception.ProviderFailureType;
 import com.jobseekercopilot.llmgateway.resilience.ProviderCircuitBreaker;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import software.amazon.awssdk.core.SdkNumber;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
 import software.amazon.awssdk.services.bedrockruntime.model.AccessDeniedException;
@@ -322,14 +329,80 @@ public class BedrockClient implements LlmProviderClient {
 
     private Document toDocument(JsonNode node) {
         try {
-            return objectMapper.convertValue(node, Document.class);
+            return jsonNodeToDocument(node);
         } catch (IllegalArgumentException exception) {
             throw invalidResponse("The configured JSON schema could not be converted for the provider.");
         }
     }
 
+    // The AWS SDK Document type is an interface with no Jackson databind
+    // creator, so it cannot be produced via ObjectMapper.convertValue. Walk the
+    // JSON tree and build the Document explicitly through its factory methods.
+    private Document jsonNodeToDocument(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return Document.fromNull();
+        }
+        if (node.isTextual()) {
+            return Document.fromString(node.textValue());
+        }
+        if (node.isBoolean()) {
+            return Document.fromBoolean(node.booleanValue());
+        }
+        if (node.isNumber()) {
+            return node.isIntegralNumber()
+                    ? Document.fromNumber(SdkNumber.fromBigInteger(node.bigIntegerValue()))
+                    : Document.fromNumber(SdkNumber.fromBigDecimal(node.decimalValue()));
+        }
+        if (node.isArray()) {
+            List<Document> items = new ArrayList<>(node.size());
+            for (JsonNode child : node) {
+                items.add(jsonNodeToDocument(child));
+            }
+            return Document.fromList(items);
+        }
+        if (node.isObject()) {
+            Map<String, Document> members = new LinkedHashMap<>();
+            node.fields().forEachRemaining(entry ->
+                    members.put(entry.getKey(), jsonNodeToDocument(entry.getValue())));
+            return Document.fromMap(members);
+        }
+        throw new IllegalArgumentException("Unsupported JSON node type: " + node.getNodeType());
+    }
+
+    // Reverse of jsonNodeToDocument: the SDK Document returned in the tool-use
+    // block likewise has no Jackson databind serialiser, so rebuild the JSON
+    // tree explicitly.
     private JsonNode fromDocument(Document document) {
-        return objectMapper.convertValue(document, JsonNode.class);
+        return documentToJsonNode(document);
+    }
+
+    private JsonNode documentToJsonNode(Document document) {
+        JsonNodeFactory factory = JsonNodeFactory.instance;
+        if (document == null || document.isNull()) {
+            return factory.nullNode();
+        }
+        if (document.isString()) {
+            return factory.textNode(document.asString());
+        }
+        if (document.isBoolean()) {
+            return factory.booleanNode(document.asBoolean());
+        }
+        if (document.isNumber()) {
+            return factory.numberNode(document.asNumber().bigDecimalValue());
+        }
+        if (document.isList()) {
+            ArrayNode array = factory.arrayNode();
+            for (Document item : document.asList()) {
+                array.add(documentToJsonNode(item));
+            }
+            return array;
+        }
+        if (document.isMap()) {
+            ObjectNode object = factory.objectNode();
+            document.asMap().forEach((key, value) -> object.set(key, documentToJsonNode(value)));
+            return object;
+        }
+        throw invalidResponse("The provider structured output could not be serialised.");
     }
 
     private String safeRequestId(ConverseResponse response) {
